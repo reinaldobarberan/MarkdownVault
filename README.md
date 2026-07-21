@@ -1,4 +1,8 @@
-# MarkdownVault
+<p align="center">
+  <img src="image/logo_app.png" alt="MarkdownVault" width="260">
+</p>
+
+<h1 align="center">MarkdownVault</h1>
 
 Editor de Markdown de escritorio al estilo **Obsidian**, construido con **WPF y .NET 8**. Gestiona un *vault* (carpeta) de notas en Markdown, HTML y Mermaid, con vista previa en tiempo real, enlaces internos entre notas y una vista de grafo para explorar sus relaciones.
 
