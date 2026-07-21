@@ -149,9 +149,12 @@ public partial class LinkPickerDialog : Window
         }
         else
         {
-            // [display](relative/path.md) — use filename as display text
+            // [display](relative/path.md) — use filename as display text.
+            // Wrap the destination in angle brackets when it has spaces/parens so
+            // Markdown recognizes it as a link (CommonMark rule).
             var display = Path.GetFileNameWithoutExtension(selectedRelPath);
-            return $"[{display}]({linkTarget})";
+            var href    = linkTarget.IndexOfAny([' ', '(', ')']) >= 0 ? $"<{linkTarget}>" : linkTarget;
+            return $"[{display}]({href})";
         }
     }
 }

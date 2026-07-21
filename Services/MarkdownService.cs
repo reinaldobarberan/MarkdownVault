@@ -72,6 +72,10 @@ public class MarkdownService
 
             // Add .md if the target has no extension
             var href = System.IO.Path.HasExtension(target) ? target : target + ".md";
+            // CommonMark: link destinations that contain spaces or parentheses must
+            // be wrapped in angle brackets, otherwise the link isn't recognized.
+            if (href.IndexOfAny([' ', '(', ')']) >= 0)
+                href = $"<{href}>";
             return $"[{display}]({href})";
         });
 
