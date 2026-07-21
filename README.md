@@ -6,6 +6,16 @@
 
 Editor de Markdown de escritorio al estilo **Obsidian**, construido con **WPF y .NET 8**. Gestiona un *vault* (carpeta) de notas en Markdown, HTML y Mermaid, con vista previa en tiempo real, enlaces internos entre notas y una vista de grafo para explorar sus relaciones.
 
+## Vista previa
+
+**Editor + vista previa en tiempo real**
+
+![Vista principal de MarkdownVault](image/Principal.png)
+
+**Vista de grafo de notas enlazadas**
+
+![Vista de grafo](image/Grafos.png)
+
 ## Características
 
 - **Editor** con AvalonEdit: resaltado de sintaxis, números de línea, ajuste de línea y barra de formato rápido (negrita, cursiva, títulos, listas, enlaces, imágenes, bloques de código).
