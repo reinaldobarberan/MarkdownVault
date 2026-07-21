@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MarkdownVault</AssemblyName>
+    <RootNamespace>MarkdownVault</RootNamespace>
+    <!-- Required for OpenFolderDialog introduced in .NET 8 WPF -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <!-- Executable / taskbar icon -->
+    <ApplicationIcon>image\barra.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- App assets embedded as WPF resources (window icon + startup splash logo) -->
+  <ItemGroup>
+    <None Remove="image\barra.ico" />
+    <None Remove="image\logo.png" />
+    <None Remove="image\logo_app.png" />
+    <Resource Include="image\barra.ico" />
+    <Resource Include="image\logo.png" />
+    <Resource Include="image\logo_app.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MVVM source-generator toolkit -->
+    <PackageReference Include="CommunityToolkit.Mvvm"         Version="8.4.2" />
+    <!-- AvalonEdit (community fork maintaining ICSharpCode namespace) -->
+    <PackageReference Include="Quicker.AvalonEdit"            Version="6.3.1" />
+    <!-- Markdown parser -->
+    <PackageReference Include="Markdig"                        Version="1.1.2" />
+    <!-- Chromium-based web view for the HTML preview pane -->
+    <PackageReference Include="Microsoft.Web.WebView2"         Version="1.0.3912.50" />
+    <!-- XAML Behaviors for drag-and-drop / interaction triggers -->
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf"  Version="1.1.135" />
+  </ItemGroup>
+
+</Project>

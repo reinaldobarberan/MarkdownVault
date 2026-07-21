@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "0p2eWMeXPUM=",
+  "success": true,
+  "projectFilePath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MarkdownVault.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\reina\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.2\\communitytoolkit.mvvm.8.4.2.nupkg.sha512",
+    "C:\\Users\\reina\\.nuget\\packages\\markdig\\1.1.2\\markdig.1.1.2.nupkg.sha512",
+    "C:\\Users\\reina\\.nuget\\packages\\microsoft.web.webview2\\1.0.3912.50\\microsoft.web.webview2.1.0.3912.50.nupkg.sha512",
+    "C:\\Users\\reina\\.nuget\\packages\\microsoft.xaml.behaviors.wpf\\1.1.135\\microsoft.xaml.behaviors.wpf.1.1.135.nupkg.sha512",
+    "C:\\Users\\reina\\.nuget\\packages\\quicker.avalonedit\\6.3.1\\quicker.avalonedit.6.3.1.nupkg.sha512"
+  ],
+  "logs": []
+}

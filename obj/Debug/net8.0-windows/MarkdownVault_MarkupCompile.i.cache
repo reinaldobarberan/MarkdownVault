@@ -1,0 +1,20 @@
+﻿MarkdownVault
+1.0.0.0
+
+winexe
+C#
+.cs
+C:\MIs Archivos\Agente\Documentacion\MarkdownVault\obj\Debug\net8.0-windows\
+MarkdownVault
+none
+false
+TRACE;DEBUG;NET;NET8_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
+C:\MIs Archivos\Agente\Documentacion\MarkdownVault\App.xaml
+10702892973
+31357984119
+29811742231
+214962851303
+MainWindow.xaml;Resources\Themes\DarkTheme.xaml;Resources\Themes\LightTheme.xaml;Views\EditorView.xaml;Views\FileTreeView.xaml;Views\GraphView.xaml;Views\InputDialog.xaml;Views\LinkPickerDialog.xaml;Views\MainWindow.xaml;Views\SplashWindow.xaml;
+
+True
+

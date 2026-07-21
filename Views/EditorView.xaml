@@ -1,0 +1,164 @@
+<UserControl x:Class="MarkdownVault.Views.EditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+             xmlns:views="clr-namespace:MarkdownVault.Views"
+             AllowDrop="True"
+             Drop="EditorView_Drop"
+             DragOver="EditorView_DragOver">
+
+    <DockPanel Background="{DynamicResource EditorBackground}">
+
+        <!-- ── Toolbar ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource ToolBarBackground}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="4,2">
+          <DockPanel>
+
+            <ToolBar Background="Transparent" Padding="0" TextElement.Foreground="{DynamicResource Foreground}">
+                <ToolBar.Resources>
+                    <Style x:Key="{x:Static ToolBar.ButtonStyleKey}" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}"/>
+                </ToolBar.Resources>
+
+                <Button ToolTip="Negrita (Ctrl+B)"
+                        Command="{Binding InsertBoldCommand}"
+                        Content="B" FontWeight="Bold"/>
+                <Button ToolTip="Cursiva (Ctrl+I)"
+                        Command="{Binding InsertItalicCommand}"
+                        Content="I" FontStyle="Italic"/>
+                <Button ToolTip="Código en línea"
+                        Command="{Binding InsertCodeCommand}"
+                        Content="`" FontFamily="Consolas"/>
+                <Separator/>
+
+                <Button ToolTip="Título 1" Command="{Binding InsertHeading1Command}" Content="H1" FontWeight="Bold"/>
+                <Button ToolTip="Título 2" Command="{Binding InsertHeading2Command}" Content="H2" FontWeight="Bold"/>
+                <Button ToolTip="Título 3" Command="{Binding InsertHeading3Command}" Content="H3" FontWeight="Bold"/>
+                <Separator/>
+
+                <Button ToolTip="Lista con viñetas"  Command="{Binding InsertBulletListCommand}"   Content="&#x2022;&#x2022;&#x2022;"/>
+                <Button ToolTip="Lista numerada"     Command="{Binding InsertNumberedListCommand}" Content="1."/>
+                <Separator/>
+
+                <Button ToolTip="Insertar enlace web"     Command="{Binding InsertLinkCommand}"         Content="&#xE71B;"  FontFamily="Segoe MDL2 Assets"/>
+                <Button ToolTip="Insertar enlace interno" Command="{Binding InsertInternalLinkCommand}" Content="&#xE8F1;"  FontFamily="Segoe MDL2 Assets"/>
+                <Button ToolTip="Insertar imagen"         Command="{Binding InsertImageCommand}"        Content="&#xEB9F;"  FontFamily="Segoe MDL2 Assets"/>
+                <Separator/>
+
+                <!-- Code-block dropdown -->
+                <Menu Background="Transparent" VerticalAlignment="Center">
+                    <MenuItem Header="{}Código &#x25BE;"
+                              FontFamily="Consolas" FontSize="13"
+                              Padding="6,2"
+                              ToolTip="Insertar bloque de código"
+                              Foreground="{DynamicResource Foreground}"
+                              Background="Transparent">
+                        <MenuItem Header="C#"          FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="csharp"/>
+                        <MenuItem Header="SQL"         FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="sql"/>
+                        <MenuItem Header="Python"      FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="python"/>
+                        <MenuItem Header="JavaScript"  FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="javascript"/>
+                        <MenuItem Header="TypeScript"  FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="typescript"/>
+                        <MenuItem Header="Bash/Shell"  FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="bash"/>
+                        <MenuItem Header="JSON"        FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="json"/>
+                        <MenuItem Header="XML/HTML"    FontFamily="Consolas"
+                                  Command="{Binding InsertCodeBlockCommand}" CommandParameter="xml"/>
+                    </MenuItem>
+                </Menu>
+                <Separator/>
+
+                <!-- Mermaid examples dropdown -->
+                <Menu Background="Transparent" VerticalAlignment="Center">
+                    <MenuItem Header="{}Mermaid &#x25BE;"
+                              FontSize="13"
+                              Padding="6,2"
+                              ToolTip="Insertar diagrama Mermaid de ejemplo"
+                              Foreground="{DynamicResource Foreground}"
+                              Background="Transparent">
+                        <MenuItem Header="Flowchart (diagrama de flujo)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="flowchart"/>
+                        <MenuItem Header="Sequence (secuencia)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="sequence"/>
+                        <MenuItem Header="Class (clases)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="class"/>
+                        <MenuItem Header="State (estados)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="state"/>
+                        <MenuItem Header="Gantt (cronograma)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="gantt"/>
+                        <MenuItem Header="Pie (torta)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="pie"/>
+                        <MenuItem Header="Mindmap (mapa mental)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="mindmap"/>
+                        <MenuItem Header="Timeline (línea de tiempo)"
+                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="timeline"/>
+                    </MenuItem>
+                </Menu>
+            </ToolBar>
+          </DockPanel>
+        </Border>
+
+        <!-- ── Navigation bar (back to previous file via internal link) ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource ToolBarBackground}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,3"
+                Visibility="{Binding CanGoBack, Converter={StaticResource BoolToVisConverter}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button ToolTip="Volver al archivo anterior (Alt+←)"
+                        Command="{Binding GoBackCommand}"
+                        Cursor="Hand"
+                        Padding="4,2"
+                        Margin="0,0,6,0"
+                        Background="Transparent"
+                        BorderThickness="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE72B;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Foreground}"
+                                   Margin="0,0,4,0"/>
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource SubtleForeground}">
+                            <Run Text="Volver a: "/>
+                            <Run Text="{Binding GoBackFileName, Mode=OneWay}"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource Foreground}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Content area: editor OR graph view ── -->
+        <Grid>
+            <!-- AvalonEdit -->
+            <!-- SyntaxHighlighting is set in code-behind after programmatic registration -->
+            <avalonEdit:TextEditor
+                x:Name="TextEditor"
+                ShowLineNumbers="True"
+                WordWrap="True"
+                Padding="8"
+                HorizontalScrollBarVisibility="Auto"
+                VerticalScrollBarVisibility="Auto"
+                Background="{DynamicResource EditorBackground}"
+                Foreground="{DynamicResource Foreground}"
+                Visibility="{Binding ShowGraph, Converter={StaticResource InverseBoolToVisConverter}}"/>
+
+            <!-- Graph view (replaces the editor while active) -->
+            <Border Visibility="{Binding ShowGraph, Converter={StaticResource BoolToVisConverter}}">
+                <views:GraphView DataContext="{Binding Graph}"/>
+            </Border>
+        </Grid>
+    </DockPanel>
+</UserControl>

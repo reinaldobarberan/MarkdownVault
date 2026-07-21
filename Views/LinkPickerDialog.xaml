@@ -1,0 +1,107 @@
+<Window x:Class="MarkdownVault.Views.LinkPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Insertar enlace interno"
+        Width="440" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackground}">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Search box -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       Text="&#xE721;"
+                       FontFamily="Segoe MDL2 Assets"
+                       FontSize="14"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource SubtleForeground}"
+                       Margin="0,0,8,0"/>
+            <TextBox x:Name="SearchBox"
+                     Grid.Column="1"
+                     FontSize="13"
+                     Padding="6,4"
+                     Background="{DynamicResource EditorBackground}"
+                     Foreground="{DynamicResource Foreground}"
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     TextChanged="SearchBox_TextChanged"
+                     KeyDown="SearchBox_KeyDown"/>
+        </Grid>
+
+        <!-- File list -->
+        <ListBox x:Name="FileList"
+                 Grid.Row="1"
+                 FontSize="13"
+                 Background="{DynamicResource EditorBackground}"
+                 Foreground="{DynamicResource Foreground}"
+                 BorderBrush="{DynamicResource BorderBrush}"
+                 SelectionMode="Single"
+                 MouseDoubleClick="FileList_MouseDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Margin="2">
+                        <TextBlock Text="&#xE7C3;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SubtleForeground}"
+                                   Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Format selector -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+            <TextBlock Text="Formato:"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{DynamicResource SubtleForeground}"
+                       Margin="0,0,10,0"/>
+            <RadioButton x:Name="WikiLinkRadio"
+                         Content="Wikilink [[archivo]]"
+                         IsChecked="True"
+                         VerticalAlignment="Center"
+                         FontSize="12"
+                         Foreground="{DynamicResource Foreground}"
+                         Margin="0,0,16,0"/>
+            <RadioButton x:Name="StdLinkRadio"
+                         Content="Estándar [texto](archivo.md)"
+                         VerticalAlignment="Center"
+                         FontSize="12"
+                         Foreground="{DynamicResource Foreground}"/>
+        </StackPanel>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+            <Button Content="Insertar"
+                    IsDefault="True"
+                    Click="Insert_Click"
+                    Padding="16,6"
+                    MinWidth="80"
+                    Margin="0,0,8,0"
+                    Cursor="Hand"/>
+            <Button Content="Cancelar"
+                    IsCancel="True"
+                    Padding="16,6"
+                    MinWidth="80"
+                    Cursor="Hand"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,120 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\views\\filetreeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:views\\filetreeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\services\\markdownservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:services\\markdownservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "FileTreeView.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\FileTreeView.xaml",
+              "RelativeDocumentMoniker": "Views\\FileTreeView.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\FileTreeView.xaml",
+              "RelativeToolTip": "Views\\FileTreeView.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-07-20T23:26:05.645Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "MarkdownService.cs",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Services\\MarkdownService.cs",
+              "RelativeDocumentMoniker": "Services\\MarkdownService.cs",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Services\\MarkdownService.cs",
+              "RelativeToolTip": "Services\\MarkdownService.cs",
+              "ViewState": "AgIAAIcAAAAAAAAAAAAlwI4AAAAeAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-18T22:39:00.084Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "Views\\MainWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\MainWindow.xaml",
+              "RelativeToolTip": "Views\\MainWindow.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-04-16T19:54:32.869Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "MainWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MainWindow.xaml",
+              "RelativeToolTip": "MainWindow.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-04-16T21:48:00.905Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "HighlightingEngine.cs",
+              "DocumentMoniker": "C:\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs",
+              "RelativeDocumentMoniker": "..\\..\\..\\..\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs",
+              "ToolTip": "C:\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs [Read Only]",
+              "RelativeToolTip": "..\\..\\..\\..\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs [Read Only]",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIBAAAYAAAAAQAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-04-16T19:58:22.084Z",
+              "EditorCaption": " [Read Only]"
+            }
+          ]
+        },
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": -1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:132:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:131:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
