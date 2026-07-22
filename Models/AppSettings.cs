@@ -14,4 +14,8 @@ public class AppSettings
     public double FileTreeWidth       { get; set; } = 240;
     public double EditorColumnWidth   { get; set; } = 0;
     public double PreviewZoom         { get; set; } = 1.0;
+    // Spell-check dictionary language. Empty = auto-detect from OS culture.
+    // A two-letter code ("es") or a full BCP-47 tag ("es-ES") both work.
+    // Useful when the OS UI language differs from the language you actually write in.
+    public string SpellCheckLanguage  { get; set; } = string.Empty;
 }

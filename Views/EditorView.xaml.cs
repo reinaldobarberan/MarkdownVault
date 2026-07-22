@@ -8,6 +8,7 @@ using System.Windows.Input;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 using MarkdownVault.ViewModels;
 
@@ -23,13 +24,29 @@ public partial class EditorView : UserControl
     private EditorViewModel? _vm;
     private bool             _updatingFromVm;
 
+    // ─── Spell checking ───────────────────────────────────────────────────────
+    // Underlines are applied by a line colorizer (see SpellCheckColorizer), which
+    // re-runs automatically whenever AvalonEdit rebuilds visual lines.
+    private SpellCheckColorizer? _spellColorizer;
+
     public EditorView()
     {
         InitializeComponent();
         RegisterMarkdownHighlighting();
         TextEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition("Markdown");
 
+        SetupSpellCheck();
+
         DataContextChanged += OnDataContextChanged;
+    }
+
+    /// <summary>Registers the spell-check colorizer when a dictionary is available.</summary>
+    private void SetupSpellCheck()
+    {
+        if (App.SpellCheckService is not { IsAvailable: true }) return;
+
+        _spellColorizer = new SpellCheckColorizer(App.SpellCheckService);
+        TextEditor.TextArea.TextView.LineTransformers.Add(_spellColorizer);
     }
 
     // ─── VM wiring ────────────────────────────────────────────────────────────
@@ -88,6 +105,8 @@ public partial class EditorView : UserControl
         _vm.Content     = TextEditor.Text;
         UpdateCaret();
         _updatingFromVm = false;
+        // The colorizer re-checks changed lines automatically as AvalonEdit rebuilds
+        // their visual lines — no explicit re-run needed here.
     }
 
     // ─── Tab switching ───────────────────────────────────────────────────────
@@ -313,6 +332,8 @@ public partial class EditorView : UserControl
 
     private void UpdateSyntaxHighlighting()
     {
+        UpdateSpellCheckEnabled();
+
         if (_vm is null || string.IsNullOrEmpty(_vm.CurrentFilePath))
         {
             TextEditor.SyntaxHighlighting = null;
@@ -339,6 +360,24 @@ public partial class EditorView : UserControl
     {
         // Font is bound from MainViewModel via DynamicResource on the Window.
         // AvalonEdit respects WPF FontFamily/FontSize on the TextEditor itself.
+    }
+
+    // ─── Spell checking ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Enables the colorizer only for prose files (Markdown/plain text) and forces a
+    /// re-colorize. HTML and Mermaid source would be all noise. Called on file/tab change.
+    /// </summary>
+    private void UpdateSpellCheckEnabled()
+    {
+        if (_spellColorizer is null) return;
+
+        var path = _vm?.CurrentFilePath;
+        var ext  = string.IsNullOrEmpty(path) ? "" : Path.GetExtension(path).ToLowerInvariant();
+        bool prose = ext is ".md" or ".markdown" or ".txt" or "";
+
+        _spellColorizer.Enabled = prose;
+        TextEditor.TextArea.TextView.Redraw();
     }
 
     // ─── Internal-link click handling ────────────────────────────────────────

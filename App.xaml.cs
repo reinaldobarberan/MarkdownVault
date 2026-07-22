@@ -12,12 +12,16 @@ public partial class App : Application
     public static FileService     FileService     { get; private set; } = null!;
     public static MarkdownService MarkdownService { get; private set; } = null!;
     public static SettingsService SettingsService { get; private set; } = null!;
+    // Spell checker uses the OS dictionaries for the current UI culture; the editor
+    // reads it to draw red squiggles. Falls back to disabled if the API/language is missing.
+    public static ISpellCheckService SpellCheckService { get; private set; } = null!;
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
-        FileService     = new FileService();
-        MarkdownService = new MarkdownService();
-        SettingsService = new SettingsService();
+        FileService       = new FileService();
+        MarkdownService   = new MarkdownService();
+        SettingsService   = new SettingsService();
+        SpellCheckService = new WindowsSpellCheckService(SettingsService.Load().SpellCheckLanguage);
 
         // Build the VM first so the theme is applied before the splash reads its brushes.
         var mainVm = new MainViewModel(FileService, MarkdownService, SettingsService);
