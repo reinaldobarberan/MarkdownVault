@@ -43,10 +43,14 @@ MarkdownVault/
 ├── Services/
 │   ├── FileService.cs            # I/O de archivos, escaneo del vault
 │   ├── MarkdownService.cs        # Markdown → HTML (Markdig) + CSS + Mermaid
-│   └── SettingsService.cs        # Persistencia de configuración
+│   ├── SettingsService.cs        # Persistencia de configuración
+│   ├── ISpellCheckService.cs     # Contrato del corrector + record SpellError
+│   └── WindowsSpellCheckService.cs # Motor COM Windows ISpellChecker
 ├── Helpers/
 │   ├── BoolToIconConverter.cs    # Converter WPF
-│   └── BoolToVisibilityConverter.cs
+│   ├── BoolToVisibilityConverter.cs
+│   ├── SpellCheckColorizer.cs    # Subrayado ondulado (DocumentColorizingTransformer)
+│   └── MarkdownProseMask.cs      # Enmascara código/URLs/links para el corrector
 └── Resources/
     └── Themes/
         ├── LightTheme.xaml       # Diccionario de recursos tema claro
@@ -58,6 +62,7 @@ MarkdownVault/
 - **`FileService`** — Lectura/escritura de archivos, escaneo recursivo del vault, gestión de rutas.
 - **`MarkdownService`** — Convierte Markdown a HTML completo con CSS GitHub-flavored inlineado, soporte para Mermaid.js, y tablas con scroll horizontal.
 - **`SettingsService`** — Persistencia de `IsDarkTheme` y otras configuraciones entre sesiones.
+- **`WindowsSpellCheckService`** (`ISpellCheckService`) — Corrector ortográfico vía la API COM `ISpellChecker` de Windows (usa los diccionarios del SO). Resuelve el idioma desde el setting `SpellCheckLanguage` con fallback a la cultura del SO. Degrada a `IsAvailable=false` si el API o el idioma no están disponibles.
 
 ### Layout de la Ventana Principal
 
@@ -82,6 +87,7 @@ El explorador se puede ocultar con `Ctrl+\`. Los modos de vista controlan qué c
 ## Funcionalidades
 
 - **Editor**: AvalonEdit con syntax highlighting, números de línea, word wrap
+- **Corrector ortográfico**: Subrayado rojo ondulado bajo palabras mal escritas, usando los diccionarios del SO (Windows `ISpellChecker`). Idioma configurable vía `SpellCheckLanguage` (empty = auto por cultura del SO). Solo en `.md/.markdown/.txt`; saltea bloques de código, frontmatter YAML, URLs, HTML y links
 - **Formato rápido**: Toolbar con Bold, Italic, Code, H1-H3, listas, enlaces, imágenes, bloques de código por lenguaje
 - **Vista previa**: WebView2 renderizando HTML con CSS GitHub-flavored
 - **Modos de vista**: Solo editor | Editor + Preview | Solo visor (ciclo con botón en toolbar)
@@ -105,6 +111,7 @@ El explorador se puede ocultar con `Ctrl+\`. Los modos de vista controlan qué c
 - El preview usa `NavigateToString()` — no navega a URLs reales.
 - Las imágenes locales se resuelven via virtual host mapping: `vault.local` → carpeta del vault.
 - El CSS está **inlineado** en `MarkdownService.GithubCss` (no se hacen requests HTTP para estilos).
+- **Gotcha de lanzamiento**: `EnsureCoreWebView2Async()` no fija `UserDataFolder`, así que WebView2 crea su carpeta de datos **al lado del ejecutable**. Si se lanza con `dotnet bin/.../MarkdownVault.dll`, el proceso es `dotnet.exe` (en `Program Files`, read-only) → WebView2 falla en silencio → **preview en blanco**. Para probar/verificar SIEMPRE correr el `.exe` real, NO `dotnet <dll>`.
 
 ### Temas
 - Se cambian dinámicamente reemplazando el `ResourceDictionary` en `Application.Resources`.
@@ -114,6 +121,14 @@ El explorador se puede ocultar con `Ctrl+\`. Los modos de vista controlan qué c
 - CSS usa `max-width: min(95vw, 1600px)` en lugar de un ancho fijo de 980px.
 - Las tablas se envuelven en un `<div class="table-wrapper">` via JavaScript al cargar el DOM, dando scroll horizontal independiente.
 - Scrollbar estilizado (6px, themed para dark mode).
+
+### Corrector Ortográfico
+- **AvalonEdit NO soporta `SpellCheck.IsEnabled` de WPF** (eso es solo para `TextBox`/`RichTextBox`). Hay que implementarlo a mano: motor + pintado + (futuro) sugerencias.
+- **El pintado usa `DocumentColorizingTransformer`, NO `IBackgroundRenderer`.** En este fork (`Quicker.AvalonEdit` 6.3.1), el `IBackgroundRenderer.Draw` vive en `OnRender` y **no se re-dispara** con `Redraw()`, `InvalidateVisual()` ni `InvalidateLayer()`. El colorizer corre en la construcción de líneas visuales, que SÍ se reconstruyen al tipear/scrollear — por eso se re-aplica solo, sin redibujo manual.
+- **El idioma NO sale de `CultureInfo.CurrentUICulture`** — esa es la UI del SO, no el idioma que se escribe (ej: Windows en inglés pero se escribe en español). Se usa el setting explícito `AppSettings.SpellCheckLanguage` (`"es"`, `"es-ES"` o vacío = auto). Un código de dos letras se mapea a su variante regional (prefiere `{lang}-{LANG}`, ej. `es → es-ES`).
+- El subrayado ondulado es un `TextDecoration` con `Pen` de `DrawingBrush` tileado (onda triangular repetida).
+- El corrector cachea por texto de línea y saltea fenced code / frontmatter (skip-set recacheado cuando cambia el `TextLength` del documento).
+- **Interop COM**: el orden de los métodos en las interfaces (`ISpellCheckerFactory`, `ISpellChecker`, etc.) DEBE calcar el vtable de `Spellcheck.h`; solo se declaran los métodos hasta el último usado.
 
 ## Cómo Compilar
 
