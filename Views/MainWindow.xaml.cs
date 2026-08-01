@@ -335,6 +335,17 @@ public partial class MainWindow : Window
         Close();
     }
 
+    /// <summary>Opens the plugins manager window (list / enable / disable).</summary>
+    private void Plugins_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new PluginsWindow
+        {
+            Owner       = this,
+            DataContext = new PluginsViewModel(App.PluginManager)
+        };
+        window.ShowDialog();
+    }
+
     // ─── Export to PNG ───────────────────────────────────────────────────────
 
     /// <summary>

@@ -7,6 +7,51 @@
              Drop="EditorView_Drop"
              DragOver="EditorView_DragOver">
 
+    <UserControl.Resources>
+        <!-- Plantillas para los items de barra aportados por plugins -->
+        <DataTemplate x:Key="PluginSingleTemplate">
+            <!-- Content por defecto = Title (texto), igual que siempre. Si el plugin
+                 declaró Icon (HasIcon=True), el DataTrigger pisa Content por el glifo
+                 y cambia la fuente a Segoe MDL2 Assets. ToolTip siempre muestra Title. -->
+            <Button ToolTip="{Binding Title}"
+                    Command="{Binding Command}"
+                    Margin="1,0">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+                        <Setter Property="Content" Value="{Binding Title}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                <Setter Property="Content"     Value="{Binding Icon}"/>
+                                <Setter Property="FontFamily"  Value="Segoe MDL2 Assets"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PluginGroupTemplate">
+            <Menu Background="Transparent" VerticalAlignment="Center">
+                <MenuItem Header="{Binding Title, StringFormat={}{0} &#x25BE;}"
+                          FontSize="13" Padding="6,2"
+                          Foreground="{DynamicResource Foreground}"
+                          Background="Transparent"
+                          ItemsSource="{Binding Children}">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Setter Property="Header"  Value="{Binding Title}"/>
+                            <Setter Property="Command" Value="{Binding Command}"/>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
+            </Menu>
+        </DataTemplate>
+
+        <views:PluginToolbarItemTemplateSelector x:Key="PluginItemSelector"
+            SingleTemplate="{StaticResource PluginSingleTemplate}"
+            GroupTemplate="{StaticResource PluginGroupTemplate}"/>
+    </UserControl.Resources>
+
     <DockPanel Background="{DynamicResource EditorBackground}">
 
         <!-- ── Toolbar ── -->
@@ -75,32 +120,17 @@
                 </Menu>
                 <Separator/>
 
-                <!-- Mermaid examples dropdown -->
-                <Menu Background="Transparent" VerticalAlignment="Center">
-                    <MenuItem Header="{}Mermaid &#x25BE;"
-                              FontSize="13"
-                              Padding="6,2"
-                              ToolTip="Insertar diagrama Mermaid de ejemplo"
-                              Foreground="{DynamicResource Foreground}"
-                              Background="Transparent">
-                        <MenuItem Header="Flowchart (diagrama de flujo)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="flowchart"/>
-                        <MenuItem Header="Sequence (secuencia)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="sequence"/>
-                        <MenuItem Header="Class (clases)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="class"/>
-                        <MenuItem Header="State (estados)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="state"/>
-                        <MenuItem Header="Gantt (cronograma)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="gantt"/>
-                        <MenuItem Header="Pie (torta)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="pie"/>
-                        <MenuItem Header="Mindmap (mapa mental)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="mindmap"/>
-                        <MenuItem Header="Timeline (línea de tiempo)"
-                                  Command="{Binding InsertMermaidExampleCommand}" CommandParameter="timeline"/>
-                    </MenuItem>
-                </Menu>
+                <!-- Barra de herramientas aportada por plugins (botones y dropdowns).
+                     El dropdown de Mermaid ahora viene del plugin Mermaid. -->
+                <ItemsControl ItemsSource="{Binding PluginToolbarItems}"
+                              ItemTemplateSelector="{StaticResource PluginItemSelector}"
+                              VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
             </ToolBar>
           </DockPanel>
         </Border>

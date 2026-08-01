@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MarkdownVault.Plugin.Mermaid</AssemblyName>
+    <RootNamespace>MarkdownVault.Plugin.Mermaid</RootNamespace>
+    <!-- Recomendado para plugins: resuelve dependencias propias sin arrastrar las del host -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Solo el contrato. Private=false → NO copiar el SDK.dll a la salida del plugin
+         (lo provee el host; duplicarlo rompe la identidad de tipos). -->
+    <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Deposita el plugin en la carpeta Plugins/ del host tras compilar, para que
+       la app lo detecte en tiempo de ejecución (dev). -->
+  <Target Name="CopyToHostPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <HostPluginDir>$(MSBuildProjectDirectory)\..\..\bin\$(Configuration)\net8.0-windows\Plugins\Mermaid\</HostPluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_PluginOut Include="$(TargetPath)" />
+      <_PluginOut Include="$(TargetDir)$(AssemblyName).deps.json" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+      <_PluginOut Include="$(MSBuildProjectDirectory)\plugin.json" />
+    </ItemGroup>
+    <MakeDir Directories="$(HostPluginDir)" />
+    <Copy SourceFiles="@(_PluginOut)" DestinationFolder="$(HostPluginDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

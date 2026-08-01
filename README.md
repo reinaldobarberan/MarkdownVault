@@ -28,6 +28,25 @@ Editor de Markdown de escritorio al estilo **Obsidian**, construido con **WPF y 
 - **Imágenes**: arrastrar y soltar, y pegar capturas de pantalla (Ctrl+V) directo a `attachments/`.
 - **Auto-guardado** y exportación de la vista previa a PNG.
 
+## Complementos (Plugins)
+
+MarkdownVault tiene un sistema de plugins de primera parte: funciones como Mermaid, el resaltado de sintaxis o los callouts no están cableadas a mano en el núcleo de la app — se cargan **dinámicamente** desde la carpeta `Plugins/` junto al ejecutable.
+
+- **Carga dinámica**: cada plugin es una carpeta con un manifiesto (`plugin.json`) y un ensamblado `.dll`, detectados y cargados al arrancar sin recompilar la app.
+- **Activar / desactivar**: desde el menú **Complementos** podés prender o apagar cada uno; el estado se persiste entre sesiones.
+- **Aislado**: si un plugin falla al activarse queda marcado en rojo con su error — la app sigue funcionando con normalidad, no se cae.
+
+Plugins incluidos:
+
+| Plugin | Qué hace |
+| ------ | -------- |
+| **Mermaid** | Diagramas de flujo, secuencia, clases, estados, Gantt, pie, mindmap y timeline en bloques ` ```mermaid `. |
+| **Resaltado de sintaxis** | Colorea el código de los bloques en la vista previa (highlight.js). |
+| **Callouts** | Alertas estilo Obsidian (`> [!note] Mi título`, con título en línea) con estilo propio. |
+| **Eisenhower** | Matriz de tareas urgente/importante, con ventana dedicada y grilla opcional embebible con un bloque `` ```eisenhower ``. |
+
+Guía de uso de cada plugin: [`docs/plugins/PLUGINS.md`](docs/plugins/PLUGINS.md) (y [`docs/plugins/EISENHOWER.md`](docs/plugins/EISENHOWER.md) para el detalle de Eisenhower). Para desarrollar un plugin propio: [`docs/plugins/GUIA-PLUGINS.md`](docs/plugins/GUIA-PLUGINS.md).
+
 ## Stack
 
 | Componente        | Tecnología                  |
@@ -38,6 +57,7 @@ Editor de Markdown de escritorio al estilo **Obsidian**, construido con **WPF y 
 | Parser Markdown   | Markdig                     |
 | Vista previa      | Microsoft.Web.WebView2      |
 | Diagramas         | Mermaid.js                  |
+| Plugins           | SDK propio + `AssemblyLoadContext` (carga dinámica) |
 
 ## Arquitectura
 
@@ -45,11 +65,15 @@ Patrón **MVVM** con inyección manual de servicios en `App.xaml.cs`.
 
 ```
 MarkdownVault/
-├── Models/       # AppSettings, OpenTab, VaultFile, GraphNode…
-├── ViewModels/   # MainViewModel, EditorViewModel, FileTreeViewModel, GraphViewModel
-├── Views/        # MainWindow, EditorView, FileTreeView, GraphView, SplashWindow…
-├── Services/     # FileService, MarkdownService, GraphService, SettingsService
-└── Resources/    # Temas (DarkTheme / LightTheme)
+├── Models/         # AppSettings, OpenTab, VaultFile, GraphNode…
+├── ViewModels/     # MainViewModel, EditorViewModel, FileTreeViewModel, GraphViewModel
+├── Views/          # MainWindow, EditorView, FileTreeView, GraphView, SplashWindow…
+├── Services/       # FileService, MarkdownService, GraphService, SettingsService
+│   └── Plugins/    # PluginManager, PluginRegistry, HostServices, PluginStorage, PathConfinement…
+│                    # (descubrimiento, carga aislada vía AssemblyLoadContext, ciclo de vida)
+├── PluginSdk/      # El contrato compartido host↔plugins: IPlugin, IPluginContext, IHostServices, IPluginStorage…
+├── Resources/      # Temas (DarkTheme / LightTheme)
+└── plugins/        # Plugins de primera parte (fuente): Mermaid, Highlight, Callouts, Eisenhower
 ```
 
 ## Requisitos

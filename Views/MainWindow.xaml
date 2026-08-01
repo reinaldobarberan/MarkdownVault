@@ -209,6 +209,9 @@
                 <Separator/>
                 <MenuItem Header="Cambiar _tema"   Command="{Binding ToggleThemeCommand}"/>
             </MenuItem>
+            <MenuItem Header="_Complementos">
+                <MenuItem Header="Administrar _plugins…" Click="Plugins_Click"/>
+            </MenuItem>
             </Menu>
         </DockPanel>
 

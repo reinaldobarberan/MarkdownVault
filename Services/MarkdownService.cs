@@ -1,16 +1,48 @@
 using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Extensions.AutoIdentifiers;
+using MarkdownVault.PluginSdk;
+using MarkdownVault.Services.Plugins;
 
 namespace MarkdownVault.Services;
 
 /// <summary>Converts Markdown text to a self-contained HTML page using Markdig.</summary>
 public class MarkdownService
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .UseAutoIdentifiers(AutoIdentifierOptions.GitHub)
-        .Build();
+    // Registry de plugins: provee los PreviewAssets (CSS/JS) a inyectar en la página
+    // de preview Y las extensiones Markdown (Markdig) del pipeline. Antes Mermaid y el
+    // pipeline estaban hardcodeados; ahora salen de los plugins habilitados.
+    private readonly PluginRegistry _registry;
+
+    // Pipeline cacheado; se invalida cuando cambia el set de plugins (activar/desactivar).
+    private MarkdownPipeline? _pipeline;
+
+    public MarkdownService(PluginRegistry registry)
+    {
+        _registry = registry;
+        _registry.Changed += () => _pipeline = null;   // rebuild on next render
+    }
+
+    /// <summary>
+    /// Construye (y cachea) el pipeline: extensiones base + las que aporten los
+    /// plugins de sintaxis habilitados (vía <see cref="IMarkdownContribution"/>).
+    /// </summary>
+    private MarkdownPipeline GetPipeline()
+    {
+        if (_pipeline is not null) return _pipeline;
+
+        var builder = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .UseAutoIdentifiers(AutoIdentifierOptions.GitHub);
+
+        foreach (var contribution in _registry.MarkdownContributions)
+        {
+            if (contribution.CreateMarkdigExtension() is IMarkdownExtension ext)
+                builder.Extensions.Add(ext);
+        }
+
+        return _pipeline = builder.Build();
+    }
 
     /// <summary>
     /// Renders <paramref name="markdown"/> to a full HTML document.
@@ -20,7 +52,7 @@ public class MarkdownService
     public string RenderToHtml(string markdown, bool isDarkTheme, string? vaultRoot = null)
     {
         var processed = PreprocessWikiLinks(markdown);
-        var body = Markdig.Markdown.ToHtml(processed, Pipeline);
+        var body = Markdig.Markdown.ToHtml(processed, GetPipeline());
         return WrapInPage(body, isDarkTheme, vaultRoot);
     }
 
@@ -79,12 +111,18 @@ public class MarkdownService
             return $"[{display}]({href})";
         });
 
-    private static string WrapInPage(string bodyHtml, bool isDarkTheme, string? vaultRoot)
+    private string WrapInPage(string bodyHtml, bool isDarkTheme, string? vaultRoot)
     {
         // WebView2 maps "vault.local" to the vault root folder so that
         // relative image paths work without writing temp files.
         var baseHref = vaultRoot is not null ? "http://vault.local/" : "";
         var bodyClass = isDarkTheme ? "markdown-body dark" : "markdown-body";
+
+        // Assets aportados por plugins (ej. Mermaid), agrupados por ubicación.
+        var assets    = _registry.PreviewAssets;
+        var headStart = RenderAssets(assets.Where(a => a.Placement == AssetPlacement.HeadStart));
+        var headEnd   = RenderAssets(assets.Where(a => a.Placement == AssetPlacement.HeadEnd));
+        var bodyEnd   = RenderAssets(assets.Where(a => a.Placement == AssetPlacement.BodyEnd));
 
         return $$"""
             <!DOCTYPE html>
@@ -93,36 +131,16 @@ public class MarkdownService
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 {{(baseHref.Length > 0 ? "<base href=\"http://vault.local/\">" : "")}}
+                {{headStart}}
                 <style>{{GithubCss}}</style>
-                <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+                {{headEnd}}
             </head>
             <body class="{{bodyClass}}">
             {{bodyHtml}}
+            {{bodyEnd}}
             <script>
                 document.addEventListener("DOMContentLoaded", function() {
-                    // ── Mermaid rendering ──
-                    var elements = document.querySelectorAll('pre code.language-mermaid');
-                    if (elements.length > 0) {
-                        var isDark = document.body.classList.contains('dark');
-                        mermaid.initialize({
-                            startOnLoad: false,
-                            theme: isDark ? 'dark' : 'default',
-                            securityLevel: 'loose'
-                        });
-                        
-                        elements.forEach(function(el) {
-                            var code = el.textContent;
-                            var pre = el.parentElement;
-                            var div = document.createElement('div');
-                            div.className = 'mermaid';
-                            div.textContent = code;
-                            pre.parentNode.replaceChild(div, pre);
-                        });
-                        
-                        mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
-                    }
-
-                    // ── Wrap tables for horizontal scroll ──
+                    // ── Wrap tables for horizontal scroll (comportamiento del host) ──
                     document.querySelectorAll('table').forEach(function(table) {
                         if (table.parentElement.classList.contains('table-wrapper')) return;
                         var wrapper = document.createElement('div');
@@ -135,6 +153,38 @@ public class MarkdownService
             </body>
             </html>
             """;
+    }
+
+    // ─── Inyección de PreviewAssets de plugins ───────────────────────────────
+
+    /// <summary>Convierte una lista de <see cref="PreviewAsset"/> en etiquetas HTML.</summary>
+    private static string RenderAssets(IEnumerable<PreviewAsset> assets)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var a in assets)
+        {
+            if (a.Source == AssetSource.Url)
+            {
+                sb.AppendLine(a.Kind == AssetKind.Style
+                    ? $"<link rel=\"stylesheet\" href=\"{a.Value}\">"
+                    : $"<script src=\"{a.Value}\"></script>");
+            }
+            else
+            {
+                // Inline o BundledFile (ya resuelto a ruta absoluta) → se embebe el contenido.
+                var content = a.Source == AssetSource.BundledFile ? SafeReadFile(a.Value) : a.Value;
+                sb.AppendLine(a.Kind == AssetKind.Style
+                    ? $"<style>{content}</style>"
+                    : $"<script>{content}</script>");
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string SafeReadFile(string path)
+    {
+        try   { return System.IO.File.ReadAllText(path); }
+        catch { return $"/* MarkdownVault: no se pudo leer el asset '{path}' */"; }
     }
 
     /// <summary>

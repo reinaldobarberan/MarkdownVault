@@ -24,6 +24,27 @@
     <Resource Include="image\logo_app.png" />
   </ItemGroup>
 
+  <!-- PluginSdk/ and plugins/ are SEPARATE, nested projects. This SDK-style host
+       globs **/*.cs by default, which would otherwise pull their sources and their
+       obj/ files into the host build (CS0436 duplicate types / CS0579 duplicate
+       assembly attributes). Keep them out of every default item glob. -->
+  <ItemGroup>
+    <Compile  Remove="PluginSdk\**;plugins\**;tests\**" />
+    <None     Remove="PluginSdk\**;plugins\**;tests\**" />
+    <Page     Remove="PluginSdk\**;plugins\**;tests\**" />
+    <Resource Remove="PluginSdk\**;plugins\**;tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Plugin contract shared with every plugin (folder-loaded at runtime) -->
+    <ProjectReference Include="PluginSdk\MarkdownVault.PluginSdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Let the test project reach internal test hooks (e.g. LoadUnloadForTest). -->
+    <InternalsVisibleTo Include="MarkdownVault.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- MVVM source-generator toolkit -->
     <PackageReference Include="CommunityToolkit.Mvvm"         Version="8.4.2" />

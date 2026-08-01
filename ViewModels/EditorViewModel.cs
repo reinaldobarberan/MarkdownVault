@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MarkdownVault.Models;
 using MarkdownVault.Services;
+using MarkdownVault.Services.Plugins;
 
 namespace MarkdownVault.ViewModels;
 
@@ -14,6 +15,7 @@ public partial class EditorViewModel : ObservableObject
 {
     private readonly FileService     _fileService;
     private readonly MarkdownService _markdownService;
+    private readonly PluginRegistry  _registry;
 
     // Debounce preview updates so the WebView2 isn't hammered on every keystroke.
     private readonly DispatcherTimer _previewTimer;
@@ -22,13 +24,20 @@ public partial class EditorViewModel : ObservableObject
     /// <summary>Backing state for the Obsidian-style graph view (nodes, filters, forces).</summary>
     public GraphViewModel Graph { get; }
 
-    public EditorViewModel(FileService fileService, MarkdownService markdownService)
+    public EditorViewModel(FileService fileService, MarkdownService markdownService, PluginRegistry registry)
     {
         _fileService     = fileService;
         _markdownService = markdownService;
+        _registry        = registry;
 
         Graph = new GraphViewModel(new GraphService(fileService));
         Graph.FileOpenRequested += async path => await OpenFileAsync(path);
+
+        // Plugin toolbar: build now (empty until plugins load) and rebuild whenever
+        // the enabled set changes (activar/desactivar).
+        RebuildPluginToolbar();
+        _registry.Changed += () =>
+            Application.Current?.Dispatcher.Invoke(RebuildPluginToolbar);
 
         _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _previewTimer.Tick += (_, _) =>
@@ -395,6 +404,9 @@ public partial class EditorViewModel : ObservableObject
 
     // ─── Preview ─────────────────────────────────────────────────────────────
 
+    /// <summary>Re-renders the current file's preview (e.g. after the active plugin set changes).</summary>
+    public void RefreshPreviewFromPlugins() => RefreshPreview();
+
     private void RefreshPreview()
     {
         if (string.IsNullOrEmpty(CurrentFilePath))
@@ -427,6 +439,36 @@ public partial class EditorViewModel : ObservableObject
     /// <summary>Raised to insert a complete snippet (e.g. a Mermaid example) verbatim at the caret.</summary>
     public event Action<string>? SnippetRequested;
 
+    /// <summary>Raised when a plugin command asks to replace the current selection.</summary>
+    public event Action<string>? ReplaceSelectionRequested;
+
+    /// <summary>Set by the editor View so plugins can read the current selection.</summary>
+    public Func<string>? SelectedTextProvider { get; set; }
+
+    // ─── Plugin toolbar (contributed commands / dropdowns) ───────────────────
+
+    /// <summary>Items de barra aportados por plugins habilitados (botones y menús).</summary>
+    public ObservableCollection<PluginToolbarItemViewModel> PluginToolbarItems { get; } = new();
+
+    private EditorContextAdapter? _pluginEditor;
+
+    private void RebuildPluginToolbar()
+    {
+        PluginToolbarItems.Clear();
+        var editor = _pluginEditor ??= new EditorContextAdapter(this);
+
+        foreach (var group in _registry.CommandGroups)
+            PluginToolbarItems.Add(PluginToolbarItemViewModel.Group(group, editor));
+        foreach (var command in _registry.Commands)
+            PluginToolbarItems.Add(PluginToolbarItemViewModel.Single(command, editor));
+    }
+
+    // Puentes que usa EditorContextAdapter (traducen a los eventos que maneja la View).
+    internal string PluginGetSelectedText()               => SelectedTextProvider?.Invoke() ?? string.Empty;
+    internal void   PluginInsertAtCaret(string text)      => SnippetRequested?.Invoke(text);
+    internal void   PluginWrapSelection(string b, string a) => InsertionRequested?.Invoke(b, a);
+    internal void   PluginReplaceSelection(string text)   => ReplaceSelectionRequested?.Invoke(text);
+
     [RelayCommand] private void InsertBold()    => InsertionRequested?.Invoke("**", "**");
     [RelayCommand] private void InsertItalic()  => InsertionRequested?.Invoke("*", "*");
     [RelayCommand] private void InsertCode()    => InsertionRequested?.Invoke("`", "`");
@@ -436,93 +478,9 @@ public partial class EditorViewModel : ObservableObject
     private void InsertCodeBlock(string language) =>
         InsertionRequested?.Invoke($"```{language}\n", "\n```");
 
-    /// <summary>Inserts a ready-to-render Mermaid example diagram at the caret.</summary>
-    [RelayCommand]
-    private void InsertMermaidExample(string kind)
-    {
-        var body = kind switch
-        {
-            "flowchart" => """
-                flowchart TD
-                    A([Inicio]) --> B{"¿Condición?"}
-                    B -->|Sí| C["Procesar datos"]
-                    B -->|No| D["Terminar"]
-                    C --> D
-                """,
-            "sequence" => """
-                sequenceDiagram
-                    participant U as Usuario
-                    participant A as App
-                    participant S as Servidor
-                    U->>A: Abrir archivo
-                    A->>S: Pedir datos
-                    S-->>A: Devolver datos
-                    A-->>U: Mostrar contenido
-                """,
-            "class" => """
-                classDiagram
-                    class Nota {
-                        +String titulo
-                        +String contenido
-                        +guardar()
-                    }
-                    class Vault {
-                        +List~Nota~ notas
-                        +abrir()
-                    }
-                    Vault "1" o-- "muchas" Nota
-                """,
-            "state" => """
-                stateDiagram-v2
-                    [*] --> Borrador
-                    Borrador --> Revision : enviar
-                    Revision --> Publicado : aprobar
-                    Revision --> Borrador : rechazar
-                    Publicado --> [*]
-                """,
-            "gantt" => """
-                gantt
-                    title Cronograma del proyecto
-                    dateFormat YYYY-MM-DD
-                    section Planificación
-                    Análisis       :done,   a1, 2024-01-01, 5d
-                    Diseño         :active, a2, after a1, 4d
-                    section Desarrollo
-                    Implementación :        a3, after a2, 10d
-                """,
-            "pie" => """
-                pie title Distribución de leads por ramo
-                    "Auto" : 40
-                    "Salud" : 30
-                    "Vida" : 20
-                    "Viaje" : 10
-                """,
-            "mindmap" => """
-                mindmap
-                  root((MarkdownVault))
-                    Editor
-                      Formato
-                      Atajos
-                    Vista previa
-                      Mermaid
-                      Tablas
-                    Grafo
-                """,
-            "timeline" => """
-                timeline
-                    title Evolución del proyecto
-                    2023 : Idea inicial
-                    2024 : Primer prototipo : Vista de grafo
-                    2025 : Lanzamiento
-                """,
-            _ => """
-                flowchart LR
-                    A --> B --> C
-                """
-        };
+    // NOTE: "Insertar ejemplo Mermaid" se migró al plugin Mermaid (aporta su propio
+    // dropdown vía PluginCommandGroup). Al desactivar el plugin, su menú desaparece.
 
-        SnippetRequested?.Invoke($"```mermaid\n{body}\n```\n");
-    }
     [RelayCommand] private void InsertHeading1() => InsertionRequested?.Invoke("# ", "");
     [RelayCommand] private void InsertHeading2() => InsertionRequested?.Invoke("## ", "");
     [RelayCommand] private void InsertHeading3() => InsertionRequested?.Invoke("### ", "");

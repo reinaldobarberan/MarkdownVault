@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0-windows because it references the WPF host project. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"        Version="17.11.1" />
+    <PackageReference Include="xunit"                         Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio"     Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\MarkdownVault.csproj" />
+    <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj" />
+    <!-- Direct reference: Eisenhower's TaskStore/capture logic is pure C# (no WPF,
+         no I/O), so it is unit-tested by referencing the assembly directly — unlike
+         TestFixture below, it doesn't need ALC-collectibility via reflection load. -->
+    <ProjectReference Include="..\..\plugins\Eisenhower\MarkdownVault.Plugin.Eisenhower.csproj" />
+    <!-- Build-and-copy only: MarkdownVault.Plugin.TestFixture.dll lands next to
+         MarkdownVault.Tests.dll. Its types are never referenced directly in IL here
+         (see Collectible_context_with_wpf_window_and_filestream_is_unloaded_after_gc) —
+         PluginManager.LoadUnloadWithWorkForTest loads it by path + reflection so this
+         ProjectReference doesn't defeat ALC collectibility. -->
+    <ProjectReference Include="..\Plugin.TestFixture\MarkdownVault.Plugin.TestFixture.csproj" />
+  </ItemGroup>
+
+</Project>

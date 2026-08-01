@@ -1,0 +1,9 @@
+{
+  "id": "core.mermaid",
+  "name": "Mermaid Diagrams",
+  "version": "1.0.0",
+  "description": "Renderiza bloques ```mermaid como diagramas en la vista previa.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.Mermaid.dll",
+  "minSdk": "1.0.0"
+}

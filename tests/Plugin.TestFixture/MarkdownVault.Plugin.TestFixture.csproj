@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Fixture project for the WPF/ALC-pin characterization test (Change 2,
+       eisenhower-plugin — documented v1 limitation, see
+       docs/plugins/GUIA-PLUGINS.md §9 "Plugins con UI WPF y descarga en caliente").
+       NOT discovered via PluginManager/plugin.json — MarkdownVault.Tests loads its
+       DLL directly by path through PluginManager.LoadUnloadWithWorkForTest, invoking
+       WpfFixturePlugin.DoWork() by reflection so the referencing test code never
+       takes a hard IL reference to a type from this assembly (that would defeat
+       collectibility, same reason PluginManager.Activate only casts to the shared
+       IPlugin interface). UseWPF because DoWork() stresses a real WPF Window (base
+       type only — see DoWork's doc comment for why the pin needs the REAL Eisenhower
+       plugin's own Window-derived type to be touched first, in the same test). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>MarkdownVault.Plugin.TestFixture</AssemblyName>
+    <RootNamespace>MarkdownVault.Plugin.TestFixture</RootNamespace>
+  </PropertyGroup>
+
+</Project>

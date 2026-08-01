@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MarkdownVault.PluginSdk</AssemblyName>
+    <RootNamespace>MarkdownVault.PluginSdk</RootNamespace>
+    <Version>1.0.0</Version>
+    <!-- Contrato puro: sin dependencias de WPF, Markdig ni WebView2. -->
+  </PropertyGroup>
+
+</Project>

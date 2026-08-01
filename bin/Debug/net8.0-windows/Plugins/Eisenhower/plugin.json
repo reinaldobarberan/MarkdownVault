@@ -1,0 +1,9 @@
+{
+  "id": "core.eisenhower",
+  "name": "Eisenhower",
+  "version": "1.0.0",
+  "description": "Matriz de Eisenhower: gestor de tareas personal (urgente/importante) con ventana de cuadrantes, historial de completadas por mes y enlaces a documentos del vault. Vista secundaria opcional vía bloques ```eisenhower.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.Eisenhower.dll",
+  "minSdk": "1.2.0"
+}

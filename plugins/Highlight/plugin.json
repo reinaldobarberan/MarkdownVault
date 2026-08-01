@@ -1,0 +1,9 @@
+{
+  "id": "core.highlight",
+  "name": "Syntax Highlighting",
+  "version": "1.0.0",
+  "description": "Resalta la sintaxis de los bloques de código con highlight.js.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.Highlight.dll",
+  "minSdk": "1.0.0"
+}

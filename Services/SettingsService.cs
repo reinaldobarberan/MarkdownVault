@@ -7,21 +7,27 @@ namespace MarkdownVault.Services;
 /// <summary>Persists <see cref="AppSettings"/> to JSON in the user's AppData folder.</summary>
 public class SettingsService
 {
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MarkdownVault",
-        "settings.json");
+    private static readonly string DefaultPath = Path.Combine(AppPaths.Root, "settings.json");
+
+    private readonly string _settingsPath;
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { WriteIndented = true };
+
+    /// <summary>
+    /// Creates the service. <paramref name="settingsPath"/> overrides the default
+    /// AppData location — used by tests to isolate persistence.
+    /// </summary>
+    public SettingsService(string? settingsPath = null) =>
+        _settingsPath = settingsPath ?? DefaultPath;
 
     /// <summary>Loads settings from disk; returns defaults if file is missing or corrupt.</summary>
     public AppSettings Load()
     {
         try
         {
-            if (!File.Exists(SettingsPath)) return new AppSettings();
-            var json = File.ReadAllText(SettingsPath);
+            if (!File.Exists(_settingsPath)) return new AppSettings();
+            var json = File.ReadAllText(_settingsPath);
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
         catch
@@ -35,8 +41,8 @@ public class SettingsService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOpts));
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+            File.WriteAllText(_settingsPath, JsonSerializer.Serialize(settings, JsonOpts));
         }
         catch (Exception ex)
         {

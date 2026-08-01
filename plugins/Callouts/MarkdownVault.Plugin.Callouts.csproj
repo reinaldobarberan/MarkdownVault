@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MarkdownVault.Plugin.Callouts</AssemblyName>
+    <RootNamespace>MarkdownVault.Plugin.Callouts</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- Markdig: referencia de compilación, pero NO se copia a la salida
+         (ExcludeAssets=runtime): el host lo provee y lo comparte por el ALC. -->
+    <PackageReference Include="Markdig" Version="1.1.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyToHostPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <HostPluginDir>$(MSBuildProjectDirectory)\..\..\bin\$(Configuration)\net8.0-windows\Plugins\Callouts\</HostPluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_PluginOut Include="$(TargetPath)" />
+      <_PluginOut Include="$(TargetDir)$(AssemblyName).deps.json" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+      <_PluginOut Include="$(MSBuildProjectDirectory)\plugin.json" />
+    </ItemGroup>
+    <MakeDir Directories="$(HostPluginDir)" />
+    <Copy SourceFiles="@(_PluginOut)" DestinationFolder="$(HostPluginDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

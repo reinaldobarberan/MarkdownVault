@@ -18,4 +18,9 @@ public class AppSettings
     // A two-letter code ("es") or a full BCP-47 tag ("es-ES") both work.
     // Useful when the OS UI language differs from the language you actually write in.
     public string SpellCheckLanguage  { get; set; } = string.Empty;
+
+    // Enabled/disabled state per plugin id (e.g. "core.mermaid": true).
+    // A plugin absent from this map defaults to ENABLED (first-party core plugins
+    // ship on). The Plugins window writes here when the user toggles one.
+    public Dictionary<string, bool> PluginsEnabled { get; set; } = new();
 }

@@ -58,6 +58,7 @@ public partial class EditorView : UserControl
             _vm.PropertyChanged      -= Vm_PropertyChanged;
             _vm.InsertionRequested   -= Vm_InsertionRequested;
             _vm.SnippetRequested     -= Vm_SnippetRequested;
+            _vm.ReplaceSelectionRequested -= Vm_ReplaceSelectionRequested;
             _vm.ActiveTabChanged     -= OnActiveTabChanged;
             _vm.ActiveTabSaving      -= OnActiveTabSaving;
             TextEditor.TextChanged   -= Editor_TextChanged;
@@ -71,8 +72,11 @@ public partial class EditorView : UserControl
         _vm.PropertyChanged    += Vm_PropertyChanged;
         _vm.InsertionRequested += Vm_InsertionRequested;
         _vm.SnippetRequested   += Vm_SnippetRequested;
+        _vm.ReplaceSelectionRequested += Vm_ReplaceSelectionRequested;
         _vm.ActiveTabChanged   += OnActiveTabChanged;
         _vm.ActiveTabSaving    += OnActiveTabSaving;
+        // Let plugin commands read the live selection from AvalonEdit.
+        _vm.SelectedTextProvider = () => TextEditor.SelectedText;
         TextEditor.TextChanged += Editor_TextChanged;
         TextEditor.PreviewMouseLeftButtonDown += TextEditor_PreviewMouseLeftButtonDown;
 
@@ -163,6 +167,17 @@ public partial class EditorView : UserControl
         var prefix = editor.CaretOffset > line.Offset ? "\n" : "";
 
         editor.Document.Insert(editor.CaretOffset, prefix + text);
+        editor.Focus();
+    }
+
+    /// <summary>Replaces the current selection (or inserts at caret) — used by plugin commands.</summary>
+    private void Vm_ReplaceSelectionRequested(string text)
+    {
+        var editor = TextEditor;
+        if (editor.SelectionLength > 0)
+            editor.Document.Replace(editor.SelectionStart, editor.SelectionLength, text);
+        else
+            editor.Document.Insert(editor.CaretOffset, text);
         editor.Focus();
     }
 

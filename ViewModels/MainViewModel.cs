@@ -17,16 +17,17 @@ public partial class MainViewModel : ObservableObject
     public EditorViewModel   Editor   { get; }
 
     public MainViewModel(
-        FileService     fileService,
-        MarkdownService markdownService,
-        SettingsService settingsService)
+        FileService                    fileService,
+        MarkdownService                markdownService,
+        SettingsService                settingsService,
+        Services.Plugins.PluginRegistry pluginRegistry)
     {
         _fileService     = fileService;
         _settingsService = settingsService;
         _settings        = settingsService.Load();
 
         FileTree = new FileTreeViewModel(fileService);
-        Editor   = new EditorViewModel(fileService, markdownService);
+        Editor   = new EditorViewModel(fileService, markdownService, pluginRegistry);
 
         // Wire file-open requests from the tree into the editor.
         FileTree.FileOpenRequested += async path => await Editor.OpenFileAsync(path);

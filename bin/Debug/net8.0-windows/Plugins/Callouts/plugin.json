@@ -1,0 +1,9 @@
+{
+  "id": "core.callouts",
+  "name": "Callouts",
+  "version": "1.0.0",
+  "description": "Estiliza los callouts/alerts ([!note], [!tip], [!warning]…) y agrega la forma Obsidian con título en línea.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.Callouts.dll",
+  "minSdk": "1.0.0"
+}
