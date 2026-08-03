@@ -33,6 +33,10 @@ public partial class EditorViewModel : ObservableObject
         Graph = new GraphViewModel(new GraphService(fileService));
         Graph.FileOpenRequested += async path => await OpenFileAsync(path);
 
+        // React to files edited outside the app (marshalled to the UI thread).
+        _fileService.FileChangedExternally += (_, e) =>
+            Application.Current?.Dispatcher.Invoke(() => HandleExternalChange(e.FullPath));
+
         // Plugin toolbar: build now (empty until plugins load) and rebuild whenever
         // the enabled set changes (activar/desactivar).
         RebuildPluginToolbar();
@@ -294,6 +298,79 @@ public partial class EditorViewModel : ObservableObject
                 SwitchToTab(OpenTabs[newIndex]);
             }
         }
+    }
+
+    // ─── External change handling ────────────────────────────────────────────
+
+    /// <summary>
+    /// Handles a file that changed on disk outside the app. If the file isn't open,
+    /// there's nothing to reconcile (the tree already refreshes). For an open tab we
+    /// reload silently when it has no unsaved edits; when it's dirty we ask before
+    /// discarding the user's local changes.
+    /// </summary>
+    private async void HandleExternalChange(string fullPath)
+    {
+        var tab = OpenTabs.FirstOrDefault(t =>
+            string.Equals(t.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+        if (tab is null) return;
+
+        if (tab.IsDirty)
+        {
+            var result = MessageBox.Show(
+                $"'{tab.FileName}' fue modificado fuera de la aplicación, pero tenés " +
+                "cambios sin guardar.\n\n¿Recargar desde el disco y descartar tus cambios?",
+                "Archivo modificado externamente",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes) return;  // keep the local buffer
+        }
+
+        await ReloadTabFromDiskAsync(tab);
+    }
+
+    /// <summary>
+    /// Reads a file, retrying briefly on <see cref="IOException"/>. An external editor
+    /// often holds a short-lived lock while saving, so the watcher can fire before the
+    /// file is readable; retrying rides out that window instead of dropping the reload.
+    /// Returns <c>null</c> when the file is gone or still locked after all attempts.
+    /// </summary>
+    private async Task<string?> TryReadWithRetryAsync(string path, int attempts = 5, int delayMs = 80)
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            try { return await _fileService.ReadFileAsync(path); }
+            catch (IOException) when (i < attempts - 1) { await Task.Delay(delayMs); }
+            catch { return null; }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Replaces a tab's content with the current file on disk. For the active tab this
+    /// refreshes the editor and preview while preserving scroll/caret: it saves the
+    /// current position, swaps the content without marking the tab dirty, then restores
+    /// the position — reusing the same machinery as a tab switch.
+    /// </summary>
+    private async Task ReloadTabFromDiskAsync(OpenTab tab)
+    {
+        var fresh = await TryReadWithRetryAsync(tab.FilePath);
+        if (fresh is null) return;  // gone, or still locked after retries — leave buffer
+
+        tab.Content = fresh;
+        tab.IsDirty = false;
+
+        if (tab != ActiveTab) return;
+
+        ActiveTabSaving?.Invoke(tab);   // View captures current scroll/caret into the tab
+
+        _isSwitchingTab = true;         // swap content without dirtying the tab
+        Content = fresh;
+        IsDirty = false;
+        _isSwitchingTab = false;
+
+        RefreshPreview();
+        ActiveTabChanged?.Invoke(tab);  // View re-applies content and restores scroll/caret
     }
 
     [RelayCommand]

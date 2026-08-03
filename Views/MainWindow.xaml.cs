@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private MainViewModel? _vm;
     private bool           _webViewReady;
     private double         _lastExplorerWidth = 240;
+    private string?        _lastPreviewPath;   // file whose HTML is currently shown, for scroll preservation
 
     public MainWindow()
     {
@@ -64,8 +65,12 @@ public partial class MainWindow : Window
             ApplyPreviewZoom(_vm.PreviewZoom);
 
         if (e.PropertyName == nameof(MainViewModel.IsDarkTheme))
+        {
+            // Keep the WebView2 base colour in sync so the next navigation doesn't flash.
+            if (_webViewReady) ApplyWebViewBackground();
             // Re-theme the native title bar after the resource dictionary swap has run.
             Dispatcher.BeginInvoke(new Action(ApplyTitleBarTheme), DispatcherPriority.Loaded);
+        }
     }
 
     // ─── Native title-bar theming (Windows 11 DWM) ────────────────────────────
@@ -206,10 +211,28 @@ public partial class MainWindow : Window
 
     // ─── WebView2 ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Sets the WebView2 base colour (painted between navigations and before the
+    /// document renders) to match the preview HTML background for the active theme.
+    /// Without this, every file switch flashes the default white during the brief
+    /// window where NavigateToString has torn down the old page but not painted the
+    /// new one. Dark: #0D1117 (GitHub dark body), Light: #FFFFFF.
+    /// </summary>
+    private void ApplyWebViewBackground()
+    {
+        bool dark = _vm?.IsDarkTheme ?? false;
+        PreviewWebView.DefaultBackgroundColor = dark
+            ? System.Drawing.Color.FromArgb(0x0D, 0x11, 0x17)
+            : System.Drawing.Color.White;
+    }
+
     private async Task InitWebViewAsync()
     {
         try
         {
+            // Set before EnsureCoreWebView2Async so the very first paint is themed.
+            ApplyWebViewBackground();
+
             await PreviewWebView.EnsureCoreWebView2Async();
 
             // Map the virtual host "vault.local" → vault root so relative image
@@ -291,7 +314,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PushPreview()
+    private async void PushPreview()
     {
         if (!_webViewReady || _vm is null) return;
 
@@ -309,8 +332,65 @@ public partial class MainWindow : Window
         }
 
         var html = _vm.Editor.PreviewHtml;
-        if (!string.IsNullOrEmpty(html))
-            PreviewWebView.NavigateToString(html);
+
+        // Empty means no active tab (e.g. the last tab was closed). We must still
+        // navigate — skipping would leave the previous file's HTML on screen. Push a
+        // minimal blank page whose background matches the theme so it clears cleanly.
+        if (string.IsNullOrEmpty(html))
+        {
+            bool dark = _vm.IsDarkTheme;
+            var bg = dark ? "#0D1117" : "#FFFFFF";
+            PreviewWebView.NavigateToString(
+                $"<!DOCTYPE html><html><body style=\"margin:0;background:{bg};\"></body></html>");
+            _lastPreviewPath = null;
+            return;
+        }
+
+        // NavigateToString reloads the whole page, resetting scroll to the top. When the
+        // SAME file re-renders (a live edit or an external reload) we preserve the reader's
+        // position; a switch to a different file should start at the top.
+        var currentPath = _vm.Editor.ActiveTab?.FilePath;
+        bool samePage = currentPath is not null &&
+            string.Equals(currentPath, _lastPreviewPath, StringComparison.OrdinalIgnoreCase);
+
+        double scrollY = 0;
+        if (samePage)
+        {
+            try
+            {
+                // Read from whichever element actually scrolls (documentElement in
+                // standards mode, body as a fallback).
+                var json = await PreviewWebView.CoreWebView2.ExecuteScriptAsync(
+                    "Math.max(window.scrollY||0, document.documentElement.scrollTop||0, document.body.scrollTop||0)");
+                double.TryParse(json, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out scrollY);
+            }
+            catch { /* couldn't read scroll — fall back to top */ }
+        }
+
+        if (samePage && scrollY > 0)
+        {
+            var y = scrollY.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // Restore once the new document has loaded, then detach. NavigationCompleted
+            // fires before async images finish loading, so the page is still shorter than
+            // its final height and a single scrollTo would be clamped short. Re-assert the
+            // position across layout settling (rAF), image load, and a few timeouts.
+            void Restore(object? s, CoreWebView2NavigationCompletedEventArgs e)
+            {
+                PreviewWebView.CoreWebView2.NavigationCompleted -= Restore;
+                _ = PreviewWebView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var y=" + y + ";" +
+                    "function s(){window.scrollTo(0,y);}" +
+                    "s();requestAnimationFrame(s);" +
+                    "window.addEventListener('load',s);" +
+                    "setTimeout(s,50);setTimeout(s,150);setTimeout(s,400);})();");
+            }
+            PreviewWebView.CoreWebView2.NavigationCompleted += Restore;
+        }
+
+        PreviewWebView.NavigateToString(html);
+        _lastPreviewPath = currentPath;
     }
 
     private void ApplyPreviewZoom(double zoom)

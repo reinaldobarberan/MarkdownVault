@@ -11,11 +11,25 @@ public class FileService : IDisposable
 {
     private FileSystemWatcher? _watcher;
 
+    // Last write-time the app itself produced for a path, used to tell our own
+    // saves apart from external edits. Accessed from both the UI thread (writes)
+    // and watcher thread-pool threads, so guard every access with _writeLock.
+    private readonly object                     _writeLock      = new();
+    private readonly Dictionary<string, DateTime> _selfWriteTimes =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Root directory of the currently open vault, or <c>null</c> when none is open.</summary>
     public string? VaultRoot { get; private set; }
 
     /// <summary>Raised on the thread pool whenever the vault's file system changes.</summary>
     public event EventHandler<FileSystemEventArgs>? VaultChanged;
+
+    /// <summary>
+    /// Raised (on a thread-pool thread) when an open file's <em>content</em> is modified
+    /// by an external process — i.e. a watcher Changed event that is not one of the app's
+    /// own saves. Subscribers must marshal to the UI thread before touching view state.
+    /// </summary>
+    public event EventHandler<FileSystemEventArgs>? FileChangedExternally;
 
     // ─── Vault lifecycle ──────────────────────────────────────────────────────
 
@@ -33,10 +47,74 @@ public class FileService : IDisposable
                                  | NotifyFilters.LastWrite,
             EnableRaisingEvents  = true
         };
+        // Tree refresh (as before).
         _watcher.Created += (s, e) => VaultChanged?.Invoke(this, e);
         _watcher.Deleted += (s, e) => VaultChanged?.Invoke(this, e);
         _watcher.Renamed += (s, e) => VaultChanged?.Invoke(this, new FileSystemEventArgs(
             WatcherChangeTypes.Changed, Path.GetDirectoryName(e.FullPath)!, e.Name));
+
+        // External content-change detection. All three routes converge on the same
+        // filter so we cover every save strategy an external editor might use:
+        //   • in-place overwrite (Notepad, echo)   → Changed
+        //   • temp file + atomic rename (VS Code…)  → Renamed (FullPath = final name)
+        //   • delete + recreate                     → Created
+        // IsExternalChange suppresses our own saves and collapses duplicate bursts.
+        _watcher.Changed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+        _watcher.Created += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+        _watcher.Renamed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+    }
+
+    /// <summary>
+    /// Routes a filesystem event through <see cref="IsExternalChange"/> and raises
+    /// <see cref="FileChangedExternally"/> only when the file's on-disk content differs
+    /// from the app's last write. Subscribers filter down to actually-open files.
+    /// </summary>
+    private void NotifyIfExternalContentChange(string fullPath, FileSystemEventArgs e)
+    {
+        if (IsExternalChange(fullPath))
+            FileChangedExternally?.Invoke(this, e);
+    }
+
+    // ─── External-change detection ────────────────────────────────────────────
+
+    /// <summary>
+    /// Records the on-disk write-time produced by one of the app's own writes to
+    /// <paramref name="path"/>, so the watcher Changed event it triggers is later
+    /// recognised as ours and suppressed by <see cref="IsExternalChange"/>.
+    /// </summary>
+    public void RecordSelfWrite(string path)
+    {
+        try
+        {
+            var stamp = File.GetLastWriteTimeUtc(path);
+            lock (_writeLock) _selfWriteTimes[path] = stamp;
+        }
+        catch { /* file vanished between write and stat — nothing to record */ }
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the current on-disk write-time of <paramref name="path"/>
+    /// differs from the last write-time we know about — i.e. an external process changed
+    /// the file. Uses EXACT equality: our own saves reproduce the same stamp we recorded,
+    /// and the duplicate events a single save emits share one stamp, so both are suppressed;
+    /// any genuinely new write (external editor, even seconds apart) gets a new stamp and is
+    /// reported. A missing/unreadable file returns <c>false</c> (handled by Deleted, not here).
+    /// </summary>
+    public bool IsExternalChange(string path)
+    {
+        DateTime actual;
+        try { actual = File.GetLastWriteTimeUtc(path); }
+        catch { return false; }
+
+        lock (_writeLock)
+        {
+            if (_selfWriteTimes.TryGetValue(path, out var known) && actual == known)
+                return false;
+
+            // New stamp: remember it (so the rest of this burst is suppressed) and report.
+            _selfWriteTimes[path] = actual;
+            return true;
+        }
     }
 
     // ─── Tree building ────────────────────────────────────────────────────────
@@ -94,8 +172,12 @@ public class FileService : IDisposable
         File.ReadAllTextAsync(path, System.Text.Encoding.UTF8);
 
     /// <summary>Writes UTF-8 text to a file asynchronously, creating it if necessary.</summary>
-    public Task WriteFileAsync(string path, string content) =>
-        File.WriteAllTextAsync(path, content, System.Text.Encoding.UTF8);
+    public async Task WriteFileAsync(string path, string content)
+    {
+        await File.WriteAllTextAsync(path, content, System.Text.Encoding.UTF8);
+        // Remember this write so the watcher Changed it fires isn't treated as external.
+        RecordSelfWrite(path);
+    }
 
     // ─── CRUD ─────────────────────────────────────────────────────────────────
 

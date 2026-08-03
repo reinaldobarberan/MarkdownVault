@@ -398,8 +398,9 @@
                     BorderThickness="1,0,0,0"
                     Visibility="{Binding Editor.ShowPreviewPanel,
                                  Converter={StaticResource BoolToVisConverter}}">
-                <wv2:WebView2 x:Name="PreviewWebView"
-                              DefaultBackgroundColor="White"/>
+                <!-- DefaultBackgroundColor is set in code-behind to match the
+                     active theme, so file switches don't flash white/light. -->
+                <wv2:WebView2 x:Name="PreviewWebView"/>
             </Border>
         </Grid>
     </DockPanel>
