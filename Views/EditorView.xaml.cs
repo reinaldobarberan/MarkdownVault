@@ -10,6 +10,7 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using MarkdownVault.Helpers;
 using MarkdownVault.Models;
+using MarkdownVault.Services;
 using MarkdownVault.ViewModels;
 
 namespace MarkdownVault.Views;
@@ -47,6 +48,10 @@ public partial class EditorView : UserControl
 
         _spellColorizer = new SpellCheckColorizer(App.SpellCheckService);
         TextEditor.TextArea.TextView.LineTransformers.Add(_spellColorizer);
+
+        // Right-click on a misspelled word → context menu with replacement suggestions.
+        // Wired once (not per-DataContext) since it only touches the editor, not the VM.
+        TextEditor.PreviewMouseRightButtonDown += TextEditor_PreviewMouseRightButtonDown;
     }
 
     // ─── VM wiring ────────────────────────────────────────────────────────────
@@ -393,6 +398,72 @@ public partial class EditorView : UserControl
 
         _spellColorizer.Enabled = prose;
         TextEditor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>
+    /// On right-click, resolves the misspelled word under the pointer and, if there is one,
+    /// attaches a fresh <see cref="ContextMenu"/> of replacement suggestions that WPF then
+    /// opens. When the click is not on a misspelling, the menu is cleared so nothing pops up —
+    /// preserving the editor's previous no-context-menu behavior for ordinary text.
+    /// </summary>
+    private void TextEditor_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Reset first: a stale menu from a previous right-click must never reappear.
+        TextEditor.ContextMenu = null;
+
+        var spell = App.SpellCheckService;
+        if (spell is not { IsAvailable: true } || _spellColorizer is not { Enabled: true })
+            return;
+
+        var pos = TextEditor.GetPositionFromPoint(e.GetPosition(TextEditor));
+        if (pos is null) return;
+
+        int    offset   = TextEditor.Document.GetOffset(pos.Value.Line, pos.Value.Column);
+        var    line     = TextEditor.Document.GetLineByOffset(offset);
+        string lineText = TextEditor.Document.GetText(line);
+        int    column   = offset - line.Offset;
+
+        var word = SpellCheckWordResolver.FindMisspelledWordAt(spell, lineText, column);
+        if (word is null) return;
+
+        // Move the caret onto the word so the user sees what will be corrected.
+        TextEditor.CaretOffset = line.Offset + word.Value.Offset;
+        TextEditor.ContextMenu = BuildSuggestionsMenu(spell, line.Offset + word.Value.Offset, word.Value);
+    }
+
+    /// <summary>
+    /// Builds the suggestions context menu for a misspelled word at
+    /// <paramref name="absoluteOffset"/> in the document. Each item replaces the word in
+    /// place; when the engine offers nothing, a single disabled "no suggestions" item is shown.
+    /// </summary>
+    private ContextMenu BuildSuggestionsMenu(
+        ISpellCheckService spell, int absoluteOffset, MisspelledWord word)
+    {
+        var menu        = new ContextMenu();
+        var suggestions = spell.Suggest(word.Word);
+
+        if (suggestions.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "(sin sugerencias)", IsEnabled = false });
+            return menu;
+        }
+
+        foreach (var suggestion in suggestions)
+        {
+            var item = new MenuItem { Header = suggestion, FontWeight = FontWeights.SemiBold };
+            item.Click += (_, _) => ReplaceWord(absoluteOffset, word.Length, suggestion);
+            menu.Items.Add(item);
+        }
+
+        return menu;
+    }
+
+    /// <summary>Replaces the misspelled span with the chosen suggestion, guarding against a stale offset.</summary>
+    private void ReplaceWord(int offset, int length, string replacement)
+    {
+        if (offset < 0 || offset + length > TextEditor.Document.TextLength) return;
+        TextEditor.Document.Replace(offset, length, replacement);
+        TextEditor.Focus();
     }
 
     // ─── Internal-link click handling ────────────────────────────────────────

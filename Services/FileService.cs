@@ -125,6 +125,11 @@ public class FileService : IDisposable
     /// </summary>
     public bool IsExternalChange(string path)
     {
+        // A missing file is never an external content change. Note: File.GetLastWriteTimeUtc
+        // does NOT throw for a non-existent path — it returns a sentinel (1601-01-01 UTC) —
+        // so guard existence explicitly rather than relying on the catch below.
+        if (!File.Exists(path)) return false;
+
         DateTime actual;
         try { actual = File.GetLastWriteTimeUtc(path); }
         catch { return false; }
