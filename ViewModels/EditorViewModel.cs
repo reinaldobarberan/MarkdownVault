@@ -71,6 +71,11 @@ public partial class EditorViewModel : ObservableObject
     [ObservableProperty] private string  _currentFilePath = string.Empty;
     [ObservableProperty] private string  _content         = string.Empty;
     [ObservableProperty] private string  _previewHtml     = string.Empty;
+    // Just the rendered markdown fragment (no page shell), for in-place preview updates.
+    [ObservableProperty] private string  _previewBodyHtml = string.Empty;
+    // Bumped when the preview SHELL changes (plugin set → injected CSS/JS differ). The view
+    // uses it to decide when a full reload is required instead of an in-place body patch.
+    [ObservableProperty] private int      _previewShellVersion;
     [ObservableProperty] private bool     _isDirty;
     [ObservableProperty] private ViewMode _viewMode        = ViewMode.EditAndPreview;
     [ObservableProperty] private int      _currentLine     = 1;
@@ -304,9 +309,11 @@ public partial class EditorViewModel : ObservableObject
 
     /// <summary>
     /// Handles a file that changed on disk outside the app. If the file isn't open,
-    /// there's nothing to reconcile (the tree already refreshes). For an open tab we
-    /// reload silently when it has no unsaved edits; when it's dirty we ask before
-    /// discarding the user's local changes.
+    /// there's nothing to reconcile (the tree already refreshes). Policy is silent by
+    /// design — no modal ever interrupts typing:
+    ///   • dirty tab  → keep the user's in-app work (auto-save persists it); ignore the
+    ///                  external version. The in-app buffer is the source of truth.
+    ///   • clean tab  → reload from disk silently, since there are no unsaved edits to lose.
     /// </summary>
     private async void HandleExternalChange(string fullPath)
     {
@@ -314,17 +321,7 @@ public partial class EditorViewModel : ObservableObject
             string.Equals(t.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (tab is null) return;
 
-        if (tab.IsDirty)
-        {
-            var result = MessageBox.Show(
-                $"'{tab.FileName}' fue modificado fuera de la aplicación, pero tenés " +
-                "cambios sin guardar.\n\n¿Recargar desde el disco y descartar tus cambios?",
-                "Archivo modificado externamente",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (result != MessageBoxResult.Yes) return;  // keep the local buffer
-        }
+        if (tab.IsDirty) return;   // in-app changes win, silently — never prompt
 
         await ReloadTabFromDiskAsync(tab);
     }
@@ -482,29 +479,42 @@ public partial class EditorViewModel : ObservableObject
     // ─── Preview ─────────────────────────────────────────────────────────────
 
     /// <summary>Re-renders the current file's preview (e.g. after the active plugin set changes).</summary>
-    public void RefreshPreviewFromPlugins() => RefreshPreview();
+    public void RefreshPreviewFromPlugins()
+    {
+        // Plugin set changed → injected CSS/JS differ → the view must do a full reload,
+        // not an in-place body patch. Bump the shell version to signal that.
+        PreviewShellVersion++;
+        RefreshPreview();
+    }
 
     private void RefreshPreview()
     {
         if (string.IsNullOrEmpty(CurrentFilePath))
         {
-            PreviewHtml = string.Empty;
+            PreviewBodyHtml = string.Empty;
+            PreviewHtml     = string.Empty;
             return;
         }
 
+        // NOTE: set PreviewBodyHtml BEFORE PreviewHtml. The view listens on PreviewHtml
+        // and reads both, so the body must already be current when that change fires.
         var ext = Path.GetExtension(CurrentFilePath).ToLowerInvariant();
         if (ext == ".html" || ext == ".htm")
         {
-            PreviewHtml = _markdownService.PrepareHtmlForPreview(Content, _fileService.VaultRoot);
+            // Raw HTML is a full document, not a fragment → force full navigation.
+            PreviewBodyHtml = string.Empty;
+            PreviewHtml     = _markdownService.PrepareHtmlForPreview(Content, _fileService.VaultRoot);
         }
         else if (ext == ".mermaid" || ext == ".mmd")
         {
             var markdown = $"```mermaid\n{Content}\n```";
-            PreviewHtml = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
+            PreviewBodyHtml = _markdownService.RenderBody(markdown);
+            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
         }
         else
         {
-            PreviewHtml = _markdownService.RenderToHtml(Content, IsDarkTheme, _fileService.VaultRoot);
+            PreviewBodyHtml = _markdownService.RenderBody(Content);
+            PreviewHtml     = _markdownService.RenderToHtml(Content, IsDarkTheme, _fileService.VaultRoot);
         }
     }
 

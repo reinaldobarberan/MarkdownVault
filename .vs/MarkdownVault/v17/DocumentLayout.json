@@ -3,6 +3,10 @@
   "WorkspaceRootPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\views\\splashwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:views\\splashwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{C4F0E1A2-0002-4B00-9000-00000000BBBB}|plugins\\Mermaid\\MarkdownVault.Plugin.Mermaid.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\plugins\\mermaid\\mermaidplugin.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{C4F0E1A2-0002-4B00-9000-00000000BBBB}|plugins\\Mermaid\\MarkdownVault.Plugin.Mermaid.csproj|solutionrelative:plugins\\mermaid\\mermaidplugin.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -42,19 +46,30 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "MermaidPlugin.cs",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
-              "RelativeDocumentMoniker": "plugins\\Mermaid\\MermaidPlugin.cs",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
-              "RelativeToolTip": "plugins\\Mermaid\\MermaidPlugin.cs",
-              "ViewState": "AgIAAAwAAAAAAAAAAAAAACgAAABFAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-30T21:59:57.586Z",
+              "Title": "SplashWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\SplashWindow.xaml",
+              "RelativeDocumentMoniker": "Views\\SplashWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\SplashWindow.xaml",
+              "RelativeToolTip": "Views\\SplashWindow.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-08-03T20:44:27.358Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 1,
+              "Title": "MermaidPlugin.cs",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
+              "RelativeDocumentMoniker": "plugins\\Mermaid\\MermaidPlugin.cs",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
+              "RelativeToolTip": "plugins\\Mermaid\\MermaidPlugin.cs",
+              "ViewState": "AgIAADkAAAAAAAAAAAAowCcAAABGAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-30T21:59:57.586Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
               "Title": ".NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
               "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
               "RelativeDocumentMoniker": "obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
@@ -66,7 +81,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "MarkdownService.cs",
               "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Services\\MarkdownService.cs",
               "RelativeDocumentMoniker": "Services\\MarkdownService.cs",
@@ -78,7 +93,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 4,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\MainWindow.xaml",
               "RelativeDocumentMoniker": "Views\\MainWindow.xaml",
@@ -89,7 +104,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 5,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MainWindow.xaml",
               "RelativeDocumentMoniker": "MainWindow.xaml",
@@ -100,7 +115,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 6,
               "Title": "HighlightingEngine.cs",
               "DocumentMoniker": "C:\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\Users\\reina\\AppData\\Local\\Temp\\.vsdbgsrc\\1374aef8f8395ba7211d76abe50a0392a0cfb54db2cb5173f111d43606c1c819\\HighlightingEngine.cs",

@@ -51,9 +51,19 @@ public class MarkdownService
     /// </summary>
     public string RenderToHtml(string markdown, bool isDarkTheme, string? vaultRoot = null)
     {
+        return WrapInPage(RenderBody(markdown), isDarkTheme, vaultRoot);
+    }
+
+    /// <summary>
+    /// Renders <paramref name="markdown"/> to just the inner HTML fragment (no page shell).
+    /// Used for in-place preview updates: the fragment is pushed into the existing page's
+    /// content container via JS, avoiding a full reload (and its flash/scroll reset).
+    /// It is exactly the body that <see cref="RenderToHtml"/> embeds.
+    /// </summary>
+    public string RenderBody(string markdown)
+    {
         var processed = PreprocessWikiLinks(markdown);
-        var body = Markdig.Markdown.ToHtml(processed, GetPipeline());
-        return WrapInPage(body, isDarkTheme, vaultRoot);
+        return Markdig.Markdown.ToHtml(processed, GetPipeline());
     }
 
     // ─── Wikilink preprocessing ──────────────────────────────────────────────
@@ -136,9 +146,25 @@ public class MarkdownService
                 {{headEnd}}
             </head>
             <body class="{{bodyClass}}">
+            <div id="mv-content">
             {{bodyHtml}}
+            </div>
             {{bodyEnd}}
             <script>
+                // In-place content update. The markdown lives in #mv-content; the init
+                // scripts (this one + plugin scripts like Mermaid/Highlight) are its
+                // SIBLINGS, so swapping the div's innerHTML leaves them intact. We then
+                // re-dispatch DOMContentLoaded so those one-time initialisers re-run
+                // against the fresh content — no full page reload, so scroll is preserved.
+                // (Assumes init scripts register plain DOMContentLoaded listeners, not
+                // {once:true}; all bundled plugins do.)
+                window.__mvSetBody = function(html) {
+                    var el = document.getElementById('mv-content');
+                    if (!el) return;
+                    el.innerHTML = html;
+                    document.dispatchEvent(new Event('DOMContentLoaded'));
+                };
+
                 document.addEventListener("DOMContentLoaded", function() {
                     // ── Wrap tables for horizontal scroll (comportamiento del host) ──
                     document.querySelectorAll('table').forEach(function(table) {

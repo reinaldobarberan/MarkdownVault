@@ -138,11 +138,46 @@ public partial class MainViewModel : ObservableObject
 
     private void OpenVaultPath(string path)
     {
+        // Independent-vault switch: files from the previous vault don't belong to the
+        // new one, so close their tabs before swapping the root. No-op on startup and
+        // on the first open (no tabs yet).
+        Editor.CloseAllTabsCommand.Execute(null);
+
         _fileService.OpenVault(path);
         FileTree.LoadVault(path);
         _settings.LastVaultPath = path;
+        RegisterKnownVault(path);
         OnPropertyChanged(nameof(VaultName));
         SaveSettings();
+    }
+
+    /// <summary>Adds a vault root to the known list (deduplicated, case-insensitive).</summary>
+    private void RegisterKnownVault(string path)
+    {
+        if (!_settings.KnownVaultPaths.Any(
+                p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase)))
+            _settings.KnownVaultPaths.Add(path);
+    }
+
+    /// <summary>
+    /// Builds the VM behind the "Administrar vaults" form, wired to the live vault
+    /// registry, the real folder picker, and this VM's open/persist operations.
+    /// </summary>
+    public VaultsViewModel CreateVaultsViewModel() =>
+        new(
+            knownPaths: _settings.KnownVaultPaths,
+            activePath: _fileService.VaultRoot,
+            pickFolder: PickVaultFolder,
+            openVault:  OpenVaultPath,
+            persist:    SaveSettings);
+
+    private static string? PickVaultFolder()
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Seleccionar carpeta raíz del vault"
+        };
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
     }
 
     private void ApplyTheme(bool dark)

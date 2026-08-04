@@ -178,8 +178,9 @@
                   Foreground="{DynamicResource Foreground}"
                   FontSize="13">
             <MenuItem Header="_Archivo">
-                <MenuItem Header="_Abrir vault…"    Command="{Binding OpenVaultCommand}" InputGestureText="Ctrl+Shift+O"/>
-                <MenuItem Header="_Nuevo archivo"   Command="{Binding NewFileCommand}"   InputGestureText="Ctrl+N"/>
+                <MenuItem Header="_Abrir vault…"      Command="{Binding OpenVaultCommand}" InputGestureText="Ctrl+Shift+O"/>
+                <MenuItem Header="Administrar _vaults…" Click="ManageVaults_Click"/>
+                <MenuItem Header="_Nuevo archivo"     Command="{Binding NewFileCommand}"   InputGestureText="Ctrl+N"/>
                 <Separator/>
                 <MenuItem Header="_Guardar"         Command="{Binding Editor.SaveCommand}"   InputGestureText="Ctrl+S"/>
                 <MenuItem Header="Guardar _como…"   Command="{Binding Editor.SaveAsCommand}" InputGestureText="Ctrl+Shift+S"/>

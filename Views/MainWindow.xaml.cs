@@ -24,7 +24,13 @@ public partial class MainWindow : Window
     private MainViewModel? _vm;
     private bool           _webViewReady;
     private double         _lastExplorerWidth = 240;
-    private string?        _lastPreviewPath;   // file whose HTML is currently shown, for scroll preservation
+
+    // Preview state, used to decide between an in-place DOM patch (same page → keeps
+    // scroll, no flash) and a full NavigateToString (different file/theme/plugin set).
+    private string?        _lastPreviewPath;
+    private bool           _lastPreviewDark;
+    private int            _lastPreviewShellVersion = -1;
+    private bool           _previewLoaded;     // last navigation finished → __mvSetBody is available
 
     public MainWindow()
     {
@@ -244,6 +250,10 @@ public partial class MainWindow : Window
 
             _webViewReady = true;
 
+            // Track load completion so we only DOM-patch a page that finished loading
+            // (its __mvSetBody helper is defined); otherwise fall back to full navigation.
+            PreviewWebView.CoreWebView2.NavigationCompleted += (_, _) => _previewLoaded = true;
+
             // ── Intercept link clicks ──
             PreviewWebView.CoreWebView2.NavigationStarting += async (_, args) =>
             {
@@ -338,59 +348,48 @@ public partial class MainWindow : Window
         // minimal blank page whose background matches the theme so it clears cleanly.
         if (string.IsNullOrEmpty(html))
         {
-            bool dark = _vm.IsDarkTheme;
-            var bg = dark ? "#0D1117" : "#FFFFFF";
+            bool darkBlank = _vm.IsDarkTheme;
+            var bg = darkBlank ? "#0D1117" : "#FFFFFF";
+            _previewLoaded = false;
             PreviewWebView.NavigateToString(
                 $"<!DOCTYPE html><html><body style=\"margin:0;background:{bg};\"></body></html>");
             _lastPreviewPath = null;
             return;
         }
 
-        // NavigateToString reloads the whole page, resetting scroll to the top. When the
-        // SAME file re-renders (a live edit or an external reload) we preserve the reader's
-        // position; a switch to a different file should start at the top.
-        var currentPath = _vm.Editor.ActiveTab?.FilePath;
-        bool samePage = currentPath is not null &&
-            string.Equals(currentPath, _lastPreviewPath, StringComparison.OrdinalIgnoreCase);
+        var currentPath  = _vm.Editor.ActiveTab?.FilePath;
+        bool dark         = _vm.IsDarkTheme;
+        int  shellVersion = _vm.Editor.PreviewShellVersion;
+        var  bodyHtml     = _vm.Editor.PreviewBodyHtml;
 
-        double scrollY = 0;
-        if (samePage)
+        // In-place DOM patch when nothing but the content changed: same file, same theme,
+        // same plugin set, and the page has finished loading (so __mvSetBody exists). This
+        // avoids a reload entirely — no flash, and scroll is preserved intrinsically. Raw
+        // .html files have no body fragment and always take the full-navigation path.
+        bool canPatch = _previewLoaded
+            && !string.IsNullOrEmpty(bodyHtml)
+            && currentPath is not null
+            && string.Equals(currentPath, _lastPreviewPath, StringComparison.OrdinalIgnoreCase)
+            && dark == _lastPreviewDark
+            && shellVersion == _lastPreviewShellVersion;
+
+        if (canPatch)
         {
             try
             {
-                // Read from whichever element actually scrolls (documentElement in
-                // standards mode, body as a fallback).
-                var json = await PreviewWebView.CoreWebView2.ExecuteScriptAsync(
-                    "Math.max(window.scrollY||0, document.documentElement.scrollTop||0, document.body.scrollTop||0)");
-                double.TryParse(json, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out scrollY);
+                var js = System.Text.Json.JsonSerializer.Serialize(bodyHtml);
+                await PreviewWebView.CoreWebView2.ExecuteScriptAsync($"window.__mvSetBody({js});");
+                return;
             }
-            catch { /* couldn't read scroll — fall back to top */ }
+            catch { /* fall through to a full navigation */ }
         }
 
-        if (samePage && scrollY > 0)
-        {
-            var y = scrollY.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-            // Restore once the new document has loaded, then detach. NavigationCompleted
-            // fires before async images finish loading, so the page is still shorter than
-            // its final height and a single scrollTo would be clamped short. Re-assert the
-            // position across layout settling (rAF), image load, and a few timeouts.
-            void Restore(object? s, CoreWebView2NavigationCompletedEventArgs e)
-            {
-                PreviewWebView.CoreWebView2.NavigationCompleted -= Restore;
-                _ = PreviewWebView.CoreWebView2.ExecuteScriptAsync(
-                    "(function(){var y=" + y + ";" +
-                    "function s(){window.scrollTo(0,y);}" +
-                    "s();requestAnimationFrame(s);" +
-                    "window.addEventListener('load',s);" +
-                    "setTimeout(s,50);setTimeout(s,150);setTimeout(s,400);})();");
-            }
-            PreviewWebView.CoreWebView2.NavigationCompleted += Restore;
-        }
-
+        // Full navigation (different file/theme/plugins, first load, or patch failed).
+        _previewLoaded = false;
         PreviewWebView.NavigateToString(html);
-        _lastPreviewPath = currentPath;
+        _lastPreviewPath         = currentPath;
+        _lastPreviewDark         = dark;
+        _lastPreviewShellVersion = shellVersion;
     }
 
     private void ApplyPreviewZoom(double zoom)
@@ -413,6 +412,18 @@ public partial class MainWindow : Window
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    /// <summary>Opens the vault manager form (list / add / switch / remove roots).</summary>
+    private void ManageVaults_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null) return;
+        var window = new VaultsWindow
+        {
+            Owner       = this,
+            DataContext = _vm.CreateVaultsViewModel()
+        };
+        window.ShowDialog();
     }
 
     /// <summary>Opens the plugins manager window (list / enable / disable).</summary>

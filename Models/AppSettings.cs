@@ -4,6 +4,11 @@ namespace MarkdownVault.Models;
 public class AppSettings
 {
     public string LastVaultPath       { get; set; } = string.Empty;
+
+    // Every vault root the user has opened, in the order they were first added.
+    // Powers the "Administrar vaults" form so the user can switch between several
+    // independent vaults. LastVaultPath still drives which one reopens on startup.
+    public List<string> KnownVaultPaths { get; set; } = new();
     public bool   IsDarkTheme         { get; set; } = false;
     public string FontFamily          { get; set; } = "Consolas";
     public double FontSize            { get; set; } = 14;

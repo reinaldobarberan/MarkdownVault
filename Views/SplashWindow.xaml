@@ -36,7 +36,7 @@
                        HorizontalAlignment="Center"
                        Margin="0,18,0,2"/>
 
-            <TextBlock Text="Editor de Markdown tipo Obsidian"
+            <TextBlock Text="Editor de Markdown "
                        Foreground="{DynamicResource SubtleForeground}"
                        FontFamily="Segoe UI"
                        FontSize="12"

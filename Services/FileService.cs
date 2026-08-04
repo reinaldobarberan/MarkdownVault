@@ -18,6 +18,14 @@ public class FileService : IDisposable
     private readonly Dictionary<string, DateTime> _selfWriteTimes =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Per-path "I am writing this" grace window. The watcher Changed event runs on a
+    // thread-pool thread and can be processed BEFORE the write records its exact stamp
+    // (a race that made auto-save look like an external edit and popped the reload
+    // prompt while the user was typing). Marking the path around our write absorbs that.
+    private readonly Dictionary<string, DateTime> _selfWriteGuardUntil =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan SelfWriteGuard = TimeSpan.FromSeconds(2);
+
     /// <summary>Root directory of the currently open vault, or <c>null</c> when none is open.</summary>
     public string? VaultRoot { get; private set; }
 
@@ -78,16 +86,31 @@ public class FileService : IDisposable
     // ─── External-change detection ────────────────────────────────────────────
 
     /// <summary>
+    /// Opens the self-write grace window for <paramref name="path"/>. Call BEFORE writing
+    /// so a watcher event that races ahead of <see cref="RecordSelfWrite"/> is still treated
+    /// as ours. See <see cref="_selfWriteGuardUntil"/>.
+    /// </summary>
+    public void BeginSelfWrite(string path)
+    {
+        lock (_writeLock) _selfWriteGuardUntil[path] = DateTime.UtcNow + SelfWriteGuard;
+    }
+
+    /// <summary>
     /// Records the on-disk write-time produced by one of the app's own writes to
     /// <paramref name="path"/>, so the watcher Changed event it triggers is later
-    /// recognised as ours and suppressed by <see cref="IsExternalChange"/>.
+    /// recognised as ours and suppressed by <see cref="IsExternalChange"/>. Also refreshes
+    /// the grace window to cover events that arrive shortly after the write completes.
     /// </summary>
     public void RecordSelfWrite(string path)
     {
         try
         {
             var stamp = File.GetLastWriteTimeUtc(path);
-            lock (_writeLock) _selfWriteTimes[path] = stamp;
+            lock (_writeLock)
+            {
+                _selfWriteTimes[path]      = stamp;
+                _selfWriteGuardUntil[path] = DateTime.UtcNow + SelfWriteGuard;
+            }
         }
         catch { /* file vanished between write and stat — nothing to record */ }
     }
@@ -95,10 +118,10 @@ public class FileService : IDisposable
     /// <summary>
     /// Returns <c>true</c> when the current on-disk write-time of <paramref name="path"/>
     /// differs from the last write-time we know about — i.e. an external process changed
-    /// the file. Uses EXACT equality: our own saves reproduce the same stamp we recorded,
-    /// and the duplicate events a single save emits share one stamp, so both are suppressed;
-    /// any genuinely new write (external editor, even seconds apart) gets a new stamp and is
-    /// reported. A missing/unreadable file returns <c>false</c> (handled by Deleted, not here).
+    /// the file. Our own saves are suppressed two ways: an EXACT write-time match (also
+    /// collapses the duplicate events one save emits), and the self-write grace window that
+    /// absorbs the watcher-vs-record race. Any genuinely new write outside that window gets a
+    /// new stamp and is reported. A missing/unreadable file returns <c>false</c>.
     /// </summary>
     public bool IsExternalChange(string path)
     {
@@ -111,7 +134,11 @@ public class FileService : IDisposable
             if (_selfWriteTimes.TryGetValue(path, out var known) && actual == known)
                 return false;
 
-            // New stamp: remember it (so the rest of this burst is suppressed) and report.
+            if (_selfWriteGuardUntil.TryGetValue(path, out var until) && DateTime.UtcNow < until)
+                return false;   // inside our own write's grace window — treat as ours
+
+            // New stamp outside the window: remember it (suppresses the rest of this burst)
+            // and report it as external.
             _selfWriteTimes[path] = actual;
             return true;
         }
@@ -174,8 +201,10 @@ public class FileService : IDisposable
     /// <summary>Writes UTF-8 text to a file asynchronously, creating it if necessary.</summary>
     public async Task WriteFileAsync(string path, string content)
     {
+        // Guard BEFORE the write so a watcher event that fires (and is processed) mid-write
+        // is recognised as ours; RecordSelfWrite after pins the exact stamp and extends it.
+        BeginSelfWrite(path);
         await File.WriteAllTextAsync(path, content, System.Text.Encoding.UTF8);
-        // Remember this write so the watcher Changed it fires isn't treated as external.
         RecordSelfWrite(path);
     }
 

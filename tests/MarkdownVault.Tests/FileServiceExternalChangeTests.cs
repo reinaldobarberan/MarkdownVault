@@ -102,6 +102,22 @@ public class FileServiceExternalChangeTests : IDisposable
         Assert.False(_svc.IsExternalChange(path));
     }
 
+    [Fact]
+    public async Task Change_within_self_write_grace_window_is_suppressed()
+    {
+        // Regression: the watcher Changed event runs on a thread pool and could be processed
+        // before RecordSelfWrite pinned the stamp, so the app's own auto-save looked external
+        // and popped the reload prompt while the user was typing. The grace window opened by
+        // WriteFileAsync must suppress a change even when the observed stamp differs.
+        var path = Path.Combine(_root, "g.md");
+        await _svc.WriteFileAsync(path, "v1");
+
+        // Simulate the racing event carrying a different stamp than the one we recorded.
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(5));
+
+        Assert.False(_svc.IsExternalChange(path));  // still ours — inside the grace window
+    }
+
     public void Dispose()
     {
         _svc.Dispose();
