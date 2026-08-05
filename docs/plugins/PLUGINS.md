@@ -1,6 +1,6 @@
 # Complementos (Plugins) — Guía de usuario
 
-MarkdownVault incluye un sistema de **complementos (plugins)**: varias de sus funciones —Mermaid, el resaltado de sintaxis, los callouts y la matriz Eisenhower— no forman parte del núcleo fijo de la app, sino que se cargan como plugins independientes desde la carpeta `Plugins/` junto al ejecutable.
+MarkdownVault incluye un sistema de **complementos (plugins)**: varias de sus funciones —Mermaid, el resaltado de sintaxis, los callouts, el botón de copiar y la matriz Eisenhower— no forman parte del núcleo fijo de la app, sino que se cargan como plugins independientes desde la carpeta `Plugins/` junto al ejecutable.
 
 Este documento explica el sistema desde el punto de vista del **usuario**: qué son, cómo activarlos o desactivarlos, y qué hace cada uno. Si en cambio querés **construir** un plugin propio, la referencia técnica es [`GUIA-PLUGINS.md`](GUIA-PLUGINS.md).
 
@@ -17,6 +17,7 @@ Este documento explica el sistema desde el punto de vista del **usuario**: qué 
 | ------ | -------- |
 | [Mermaid](#mermaid) | Diagramas (flujo, secuencia, clases, Gantt…) a partir de bloques de código. |
 | [Resaltado de sintaxis](#resaltado-de-sintaxis) | Colorea el código de los bloques en la vista previa. |
+| [Botón de copiar](#botón-de-copiar) | Agrega un botón para copiar el contenido de cada bloque de código. |
 | [Callouts](#callouts) | Alertas estilo Obsidian con título en línea. |
 | [Eisenhower](#eisenhower) | Matriz de tareas urgente/importante con ventana dedicada. Ver guía aparte: [`EISENHOWER.md`](EISENHOWER.md). |
 
@@ -40,6 +41,12 @@ Soporta flowcharts, diagramas de secuencia, de clases, de estados, Gantt, pie, m
 ### Resaltado de sintaxis
 
 Aplica coloreado de sintaxis a los bloques de código de la vista previa (usando highlight.js), detectando el lenguaje según la etiqueta del bloque (` ```csharp `, ` ```json `, ` ```bash `, etc.). No requiere ninguna acción del usuario: si el plugin está activo, el resaltado se aplica solo.
+
+### Botón de copiar
+
+Agrega un botón con **icono de copiar** en la esquina superior derecha de cada bloque de código de la vista previa. Al pasar el mouse por encima del bloque el botón se resalta; al hacer clic copia el contenido del bloque al portapapeles y confirma mostrando un tilde (✓) verde por un instante.
+
+No requiere ninguna acción ni sintaxis especial: si el plugin está activo, el botón aparece solo en **todos** los lenguajes (` ```csharp `, ` ```bash `, ` ```json `, etc.). Los bloques `mermaid` se excluyen a propósito, porque ese plugin los transforma en un diagrama (no en código copiable).
 
 ### Callouts
 

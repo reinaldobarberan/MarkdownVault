@@ -1,0 +1,9 @@
+{
+  "id": "core.copybutton",
+  "name": "Copy Button",
+  "version": "1.0.0",
+  "description": "Agrega un botón de copiar en la esquina de cada bloque de código de la vista previa.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.CopyButton.dll",
+  "minSdk": "1.0.0"
+}
