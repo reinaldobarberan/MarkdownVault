@@ -1,29 +1,29 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\",
+  "WorkspaceRootPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\views\\splashwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvaultgit\\views\\splashwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:views\\splashwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{C4F0E1A2-0002-4B00-9000-00000000BBBB}|plugins\\Mermaid\\MarkdownVault.Plugin.Mermaid.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\plugins\\mermaid\\mermaidplugin.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{C4F0E1A2-0002-4B00-9000-00000000BBBB}|plugins\\Mermaid\\MarkdownVault.Plugin.Mermaid.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvaultgit\\plugins\\mermaid\\mermaidplugin.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{C4F0E1A2-0002-4B00-9000-00000000BBBB}|plugins\\Mermaid\\MarkdownVault.Plugin.Mermaid.csproj|solutionrelative:plugins\\mermaid\\mermaidplugin.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\services\\markdownservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvaultgit\\services\\markdownservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:services\\markdownservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvaultgit\\views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvault\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "AbsoluteMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|c:\\mis archivos\\agente\\documentacion\\markdownvaultgit\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{888E6ADB-7234-055E-78C3-2484EFE54CC5}|MarkdownVault.csproj|solutionrelative:mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
@@ -47,9 +47,9 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "SplashWindow.xaml",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\SplashWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Views\\SplashWindow.xaml",
               "RelativeDocumentMoniker": "Views\\SplashWindow.xaml",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\SplashWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Views\\SplashWindow.xaml",
               "RelativeToolTip": "Views\\SplashWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
               "WhenOpened": "2026-08-03T20:44:27.358Z",
@@ -59,9 +59,9 @@
               "$type": "Document",
               "DocumentIndex": 1,
               "Title": "MermaidPlugin.cs",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\plugins\\Mermaid\\MermaidPlugin.cs",
               "RelativeDocumentMoniker": "plugins\\Mermaid\\MermaidPlugin.cs",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\plugins\\Mermaid\\MermaidPlugin.cs",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\plugins\\Mermaid\\MermaidPlugin.cs",
               "RelativeToolTip": "plugins\\Mermaid\\MermaidPlugin.cs",
               "ViewState": "AgIAADkAAAAAAAAAAAAowCcAAABGAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
@@ -71,9 +71,9 @@
               "$type": "Document",
               "DocumentIndex": 2,
               "Title": ".NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
               "RelativeDocumentMoniker": "obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
               "RelativeToolTip": "obj\\Debug\\net8.0-windows\\.NETCoreApp,Version=v8.0.AssemblyAttributes.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
@@ -83,9 +83,9 @@
               "$type": "Document",
               "DocumentIndex": 3,
               "Title": "MarkdownService.cs",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Services\\MarkdownService.cs",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Services\\MarkdownService.cs",
               "RelativeDocumentMoniker": "Services\\MarkdownService.cs",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Services\\MarkdownService.cs",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Services\\MarkdownService.cs",
               "RelativeToolTip": "Services\\MarkdownService.cs",
               "ViewState": "AgIAAIcAAAAAAAAAAAAlwJQAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
@@ -95,9 +95,9 @@
               "$type": "Document",
               "DocumentIndex": 4,
               "Title": "MainWindow.xaml",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\MainWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Views\\MainWindow.xaml",
               "RelativeDocumentMoniker": "Views\\MainWindow.xaml",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\Views\\MainWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\Views\\MainWindow.xaml",
               "RelativeToolTip": "Views\\MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
               "WhenOpened": "2026-04-16T19:54:32.869Z"
@@ -106,9 +106,9 @@
               "$type": "Document",
               "DocumentIndex": 5,
               "Title": "MainWindow.xaml",
-              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MainWindow.xaml",
+              "DocumentMoniker": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\MainWindow.xaml",
               "RelativeDocumentMoniker": "MainWindow.xaml",
-              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MainWindow.xaml",
+              "ToolTip": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\MainWindow.xaml",
               "RelativeToolTip": "MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
               "WhenOpened": "2026-04-16T21:48:00.905Z"
