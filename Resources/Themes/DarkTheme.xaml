@@ -343,4 +343,15 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ── ToolBar overflow ──────────────────────────────────────────────────
+         When a pane is too narrow for the whole toolbar (routine once the editor
+         is split), WPF moves the extra items into an overflow popup. That popup's
+         Border is painted from a resource internal to the WPF theme assembly, so
+         it stays light no matter which theme is active — leaving near-white text
+         invisible on white. The panel sits inside that Border and DOES honour an
+         app-level style, so painting it here covers the light area. -->
+    <Style TargetType="ToolBarOverflowPanel">
+        <Setter Property="Background" Value="{DynamicResource PanelBackground}"/>
+    </Style>
+
 </ResourceDictionary>

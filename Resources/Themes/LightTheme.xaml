@@ -237,4 +237,12 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ── ToolBar overflow ──────────────────────────────────────────────────
+         Mirrors DarkTheme: the overflow popup's Border comes from the WPF theme
+         assembly and ignores the active theme, so the panel inside it is painted
+         here to keep the toolbar's look consistent at narrow pane widths. -->
+    <Style TargetType="ToolBarOverflowPanel">
+        <Setter Property="Background" Value="{DynamicResource PanelBackground}"/>
+    </Style>
+
 </ResourceDictionary>
