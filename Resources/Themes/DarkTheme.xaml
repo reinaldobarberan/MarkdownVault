@@ -7,6 +7,7 @@
     <helpers:BoolToVisibilityConverter x:Key="InverseBoolToVisConverter"
                                         TrueValue="Collapsed" FalseValue="Visible"/>
     <helpers:BoolToIconConverter       x:Key="BoolToIconConverter"/>
+    <helpers:FileNodeToIconConverter   x:Key="FileNodeToIconConverter"/>
 
     <!-- ── Palette (VS Code Dark+) ─────────────────────────────────────────── -->
     <SolidColorBrush x:Key="WindowBackground"    Color="#1E1E1E"/>

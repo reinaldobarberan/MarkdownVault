@@ -17,12 +17,12 @@ namespace MarkdownVault.Views;
 
 /// <summary>
 /// Editor panel: wires AvalonEdit (which has no DP for Text) to
-/// <see cref="EditorViewModel"/> manually, registers the Markdown
+/// <see cref="EditorGroupViewModel"/> manually, registers the Markdown
 /// syntax highlighting definition on first load, and manages tab events.
 /// </summary>
 public partial class EditorView : UserControl
 {
-    private EditorViewModel? _vm;
+    private EditorGroupViewModel? _vm;
     private bool             _updatingFromVm;
 
     // ─── Spell checking ───────────────────────────────────────────────────────
@@ -39,6 +39,15 @@ public partial class EditorView : UserControl
         SetupSpellCheck();
 
         DataContextChanged += OnDataContextChanged;
+
+        // Phase 4 focus tracking (design §5.1 / C5): PreviewMouseDown TUNNELS, so it fires
+        // for a press anywhere in this pane — including the tab strip and toolbar, which are
+        // Border/TextBlock/ItemsControl and Focusable=false, so they never raise
+        // GotKeyboardFocus. GotKeyboardFocus is still needed for Tab-key traversal and
+        // programmatic TextEditor.Focus() calls elsewhere in this file. Neither alone covers
+        // both cases — both are wired.
+        PreviewMouseDown += (_, _) => (DataContext as EditorGroupViewModel)?.NotifyFocused();
+        GotKeyboardFocus  += (_, _) => (DataContext as EditorGroupViewModel)?.NotifyFocused();
     }
 
     /// <summary>Registers the spell-check colorizer when a dictionary is available.</summary>
@@ -70,7 +79,7 @@ public partial class EditorView : UserControl
             TextEditor.PreviewMouseLeftButtonDown -= TextEditor_PreviewMouseLeftButtonDown;
         }
 
-        _vm = DataContext as EditorViewModel;
+        _vm = DataContext as EditorGroupViewModel;
 
         if (_vm is null) return;
 
@@ -97,11 +106,11 @@ public partial class EditorView : UserControl
 
         switch (e.PropertyName)
         {
-            case nameof(EditorViewModel.Content):
+            case nameof(EditorGroupViewModel.Content):
                 if (!_updatingFromVm)
                     SetEditorText(_vm.Content);
                 break;
-            case nameof(EditorViewModel.CurrentFilePath):
+            case nameof(EditorGroupViewModel.CurrentFilePath):
                 UpdateSyntaxHighlighting();
                 break;
         }
@@ -317,6 +326,34 @@ public partial class EditorView : UserControl
         editor.Focus();
     }
 
+    // ─── Tab strip event handlers (moved from MainWindow.xaml.cs, task 3.10) ──────────────────
+    // The tab strip used to be docked across the whole window, bound to Editor (the then-only
+    // group); now it lives inside this pane's own EditorView, so handlers target this pane's
+    // own _vm directly — never FocusedGroup or the Editor facade.
+
+    /// <summary>Left-click on a tab → switch to it.</summary>
+    private void Tab_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_vm is null) return;
+        if (sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
+        {
+            _vm.SwitchToTabCommand.Execute(tab);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Middle-click on a tab → close it.</summary>
+    private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_vm is null) return;
+        if (e.ChangedButton == MouseButton.Middle &&
+            sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
+        {
+            _vm.CloseTabCommand.Execute(tab);
+            e.Handled = true;
+        }
+    }
+
     // ─── Drag & Drop ─────────────────────────────────────────────────────────
 
     private void EditorView_DragOver(object sender, DragEventArgs e)
@@ -376,7 +413,7 @@ public partial class EditorView : UserControl
         }
     }
 
-    private void ApplyFont(EditorViewModel vm)
+    private void ApplyFont(EditorGroupViewModel vm)
     {
         // Font is bound from MainViewModel via DynamicResource on the Window.
         // AvalonEdit respects WPF FontFamily/FontSize on the TextEditor itself.

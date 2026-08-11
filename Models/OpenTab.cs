@@ -11,11 +11,16 @@ public partial class OpenTab : ObservableObject
 {
     public OpenTab(string filePath)
     {
-        FilePath = filePath;
+        _filePath = filePath;
     }
 
-    /// <summary>Full path to the file on disk.</summary>
-    public string FilePath { get; }
+    /// <summary>
+    /// Full path to the file on disk. Settable so Save-As can re-key the tab's identity
+    /// (split-editor path-uniqueness invariant depends on this staying accurate — see
+    /// bug #273: before this became settable, Save-As silently left the tab registered
+    /// under its OLD path).
+    /// </summary>
+    [ObservableProperty] private string _filePath;
 
     /// <summary>Short filename for display in the tab.</summary>
     public string FileName => Path.GetFileName(FilePath);
@@ -31,6 +36,13 @@ public partial class OpenTab : ObservableObject
 
     /// <summary>Display name shown on the tab: filename + dirty indicator.</summary>
     public string DisplayName => IsDirty ? $"{FileName} •" : FileName;
+
+    partial void OnFilePathChanged(string value)
+    {
+        OnPropertyChanged(nameof(FileName));
+        OnPropertyChanged(nameof(Extension));
+        OnPropertyChanged(nameof(DisplayName));
+    }
 
     partial void OnIsDirtyChanged(bool value) =>
         OnPropertyChanged(nameof(DisplayName));

@@ -25,6 +25,12 @@ public partial class MainWindow : Window
     private bool           _webViewReady;
     private double         _lastExplorerWidth = 240;
 
+    // Preview subscription lifecycle (design §5.2, bug #272 fix — pulled forward from Phase 5
+    // because Phase 4's SE-8 "preview follows focus" cannot work correctly without it): exactly
+    // one field can hold a subscription, unsubscribe always precedes assignment, the handler is
+    // a named method (hence removable), and ReferenceEquals makes repeat calls free.
+    private EditorGroupViewModel? _previewSource;
+
     // Preview state, used to decide between an in-place DOM patch (same page → keeps
     // scroll, no flash) and a full NavigateToString (different file/theme/plugin set).
     private string?        _lastPreviewPath;
@@ -47,11 +53,12 @@ public partial class MainWindow : Window
         _vm = DataContext as MainViewModel;
         if (_vm is null) return;
 
-        _vm.Editor.PropertyChanged += Editor_PropertyChanged;
+        BindPreviewSource(_vm.FocusedGroup);
         _vm.PropertyChanged        += Vm_PropertyChanged;
 
-        ApplyViewMode(_vm.Editor.ViewMode);
+        ApplyViewMode(_vm.ViewMode);
         ApplyExplorerVisibility(_vm.IsExplorerVisible);
+        ApplySplit(_vm.IsSplit);
 
         // Bind font to window so EditorView can inherit via DynamicResource.
         SetBinding(FontFamilyProperty, new System.Windows.Data.Binding(nameof(MainViewModel.FontFamily))
@@ -77,6 +84,25 @@ public partial class MainWindow : Window
             // Re-theme the native title bar after the resource dictionary swap has run.
             Dispatcher.BeginInvoke(new Action(ApplyTitleBarTheme), DispatcherPriority.Loaded);
         }
+
+        // ViewMode/ShowGraph were promoted from EditorGroupViewModel to MainViewModel in
+        // Phase 2 — the facade (_vm.Editor) can't cover promoted members, so these are now
+        // read off _vm directly instead of via the old Editor_PropertyChanged handler.
+        if (e.PropertyName == nameof(MainViewModel.ViewMode) && !_vm.ShowGraph)
+            ApplyViewMode(_vm.ViewMode);
+
+        if (e.PropertyName == nameof(MainViewModel.ShowGraph))
+            ApplyGraphMode(_vm.ShowGraph);
+
+        // Phase 4: split geometry (pane B width/visibility, splitter).
+        if (e.PropertyName == nameof(MainViewModel.IsSplit))
+            ApplySplit(_vm.IsSplit);
+
+        // Phase 4 (pulled forward from Phase 5, design §5.2): re-point the single preview
+        // subscription at the newly-focused group — unsubscribe old, subscribe new, push its
+        // content immediately. This is what makes SE-8 "preview follows focus" actually work.
+        if (e.PropertyName == nameof(MainViewModel.FocusedGroup))
+            BindPreviewSource(_vm.FocusedGroup);
     }
 
     // ─── Native title-bar theming (Windows 11 DWM) ────────────────────────────
@@ -132,16 +158,65 @@ public partial class MainWindow : Window
         private static int ToColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
     }
 
-    private void Editor_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    /// <summary>
+    /// Owner of the single preview subscription (design §5.2, bug #272 fix). Unsubscribe
+    /// ALWAYS precedes assignment, the handler is a named method (removable), and the
+    /// ReferenceEquals guard makes repeat calls with the same group free. Called from
+    /// <see cref="OnDataContextChanged"/> (initial bind) and <see cref="Vm_PropertyChanged"/>
+    /// whenever <see cref="MainViewModel.FocusedGroup"/> changes.
+    /// </summary>
+    private void BindPreviewSource(EditorGroupViewModel? g)
     {
-        if (e.PropertyName == nameof(EditorViewModel.PreviewHtml) && _webViewReady)
+        if (ReferenceEquals(_previewSource, g)) return;
+        if (_previewSource is not null)
+            _previewSource.PropertyChanged -= PreviewSource_PropertyChanged;
+        _previewSource = g;
+        if (_previewSource is not null)
+            _previewSource.PropertyChanged += PreviewSource_PropertyChanged;
+        PushPreview();
+    }
+
+    private void PreviewSource_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EditorGroupViewModel.PreviewHtml) && _webViewReady)
             PushPreview();
+    }
 
-        if (e.PropertyName == nameof(EditorViewModel.ViewMode) && _vm is not null && !_vm.Editor.ShowGraph)
-            ApplyViewMode(_vm.Editor.ViewMode);
+    /// <summary>
+    /// Task 4.11: nested pane grid — pane A / splitter / pane B. Widths are imperative
+    /// (GridLength star-collapse has no clean declarative form, matching
+    /// <see cref="ApplyExplorerVisibility"/>'s precedent); the elements' own Visibility is
+    /// bound declaratively in XAML to <see cref="MainViewModel.IsSplit"/>.
+    /// </summary>
+    private void ApplySplit(bool split)
+    {
+        if (_vm is null) return;
 
-        if (e.PropertyName == nameof(EditorViewModel.ShowGraph) && _vm is not null)
-            ApplyGraphMode(_vm.Editor.ShowGraph);
+        if (split)
+        {
+            var ratio = Math.Clamp(_vm.SplitRatio, 0.1, 0.9);
+            PaneAColumn.Width    = new GridLength(ratio, GridUnitType.Star);
+            PaneBColumn.Width    = new GridLength(1 - ratio, GridUnitType.Star);
+            PaneBColumn.MinWidth = 150;
+            PaneSplitterColumn.Width = new GridLength(4);
+        }
+        else
+        {
+            PaneAColumn.Width    = new GridLength(1, GridUnitType.Star);
+            PaneBColumn.Width    = new GridLength(0);
+            PaneBColumn.MinWidth = 0;
+            PaneSplitterColumn.Width = new GridLength(0);
+        }
+    }
+
+    /// <summary>Task 4.11: captures the splitter's dropped position as a ratio (0..1) so it
+    /// survives a restart (SE-3) — same capture-before-collapse trick as <c>_lastExplorerWidth</c>.</summary>
+    private void PaneSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (_vm is null) return;
+        var total = PaneAColumn.ActualWidth + PaneBColumn.ActualWidth;
+        if (total > 0)
+            _vm.SplitRatio = PaneAColumn.ActualWidth / total;
     }
 
     /// <summary>
@@ -163,7 +238,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            ApplyViewMode(_vm.Editor.ViewMode);
+            ApplyViewMode(_vm.ViewMode);
         }
     }
 
@@ -268,7 +343,7 @@ public partial class MainWindow : Window
                     var relativePath = Uri.UnescapeDataString(
                         args.Uri["http://vault.local/".Length..]);
 
-                    if (_vm?.Editor.ActiveTab is null || string.IsNullOrEmpty(relativePath))
+                    if (_vm?.FocusedGroup.ActiveTab is null || string.IsNullOrEmpty(relativePath))
                         return;
 
                     // Ignore image/asset links — let them load normally.
@@ -279,8 +354,8 @@ public partial class MainWindow : Window
                     try
                     {
                         var resolved = App.FileService!.ResolveInternalLink(
-                            relativePath, _vm.Editor.ActiveTab.FilePath);
-                        await _vm.Editor.NavigateToLinkAsync(resolved);
+                            relativePath, _vm.FocusedGroup.ActiveTab.FilePath);
+                        await _vm.FocusedGroup.NavigateToLinkAsync(resolved);
                     }
                     catch (Exception ex)
                     {
@@ -308,13 +383,11 @@ public partial class MainWindow : Window
             if (_vm is not null)
                 ApplyPreviewZoom(_vm.PreviewZoom);
 
-            if (_vm is not null)
-                _vm.Editor.PropertyChanged += (_, e2) =>
-                {
-                    if (e2.PropertyName == nameof(EditorViewModel.PreviewHtml))
-                        PushPreview();
-                };
-
+            // NOTE: the preview subscription itself is owned by BindPreviewSource (bug #272 —
+            // this used to be a SECOND, anonymous-lambda subscription here with no stored
+            // reference, impossible to unsubscribe, causing every preview update to push
+            // twice). BindPreviewSource was already wired in OnDataContextChanged before the
+            // WebView2 finished initializing; just push once now that it's ready.
             PushPreview();
         }
         catch (Exception ex)
@@ -341,9 +414,12 @@ public partial class MainWindow : Window
             catch { /* ignore if already mapped identically */ }
         }
 
-        var html = _vm.Editor.PreviewHtml;
+        // Preview always tracks _previewSource (BindPreviewSource, kept in sync with
+        // FocusedGroup) — never the Editor facade, and never a fixed pane (SE-8).
+        var html = _previewSource?.PreviewHtml ?? string.Empty;
 
-        // Empty means no active tab (e.g. the last tab was closed). We must still
+        // Empty means no preview source, or no active tab in it (e.g. the last tab was
+        // closed, or pane B is freshly split and still empty per SE-1). We must still
         // navigate — skipping would leave the previous file's HTML on screen. Push a
         // minimal blank page whose background matches the theme so it clears cleanly.
         if (string.IsNullOrEmpty(html))
@@ -357,10 +433,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var currentPath  = _vm.Editor.ActiveTab?.FilePath;
+        var currentPath  = _previewSource?.ActiveTab?.FilePath;
         bool dark         = _vm.IsDarkTheme;
-        int  shellVersion = _vm.Editor.PreviewShellVersion;
-        var  bodyHtml     = _vm.Editor.PreviewBodyHtml;
+        int  shellVersion = _previewSource?.PreviewShellVersion ?? -1;
+        var  bodyHtml     = _previewSource?.PreviewBodyHtml ?? string.Empty;
 
         // In-place DOM patch when nothing but the content changed: same file, same theme,
         // same plugin set, and the page has finished loading (so __mvSetBody exists). This
@@ -455,8 +531,8 @@ public partial class MainWindow : Window
 
         // Default filename based on the active tab.
         var defaultName = "export";
-        if (_vm.Editor.ActiveTab is not null)
-            defaultName = System.IO.Path.GetFileNameWithoutExtension(_vm.Editor.ActiveTab.FilePath);
+        if (_vm.FocusedGroup.ActiveTab is not null)
+            defaultName = System.IO.Path.GetFileNameWithoutExtension(_vm.FocusedGroup.ActiveTab.FilePath);
 
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
@@ -514,31 +590,6 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 $"Error al exportar la imagen:\n{ex.Message}",
                 "Error de exportación", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    // ─── Global tab bar event handlers ────────────────────────────────────────
-
-    /// <summary>Left-click on a tab → switch to it.</summary>
-    private void Tab_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_vm is null) return;
-        if (sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
-        {
-            _vm.Editor.SwitchToTabCommand.Execute(tab);
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>Middle-click on a tab → close it.</summary>
-    private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_vm is null) return;
-        if (e.ChangedButton == MouseButton.Middle &&
-            sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
-        {
-            _vm.Editor.CloseTabCommand.Execute(tab);
-            e.Handled = true;
         }
     }
 }

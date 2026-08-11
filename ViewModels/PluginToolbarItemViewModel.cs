@@ -52,14 +52,14 @@ public sealed class PluginToolbarItemViewModel
 }
 
 /// <summary>
-/// Puente entre <see cref="IEditorContext"/> (SDK) y el <see cref="EditorViewModel"/>.
+/// Puente entre <see cref="IEditorContext"/> (SDK) y el <see cref="EditorGroupViewModel"/>.
 /// Traduce las operaciones a los eventos que ya maneja la vista del editor.
 /// </summary>
 internal sealed class EditorContextAdapter : IEditorContext
 {
-    private readonly EditorViewModel _vm;
+    private readonly EditorGroupViewModel _vm;
 
-    public EditorContextAdapter(EditorViewModel vm) => _vm = vm;
+    public EditorContextAdapter(EditorGroupViewModel vm) => _vm = vm;
 
     public string Content      => _vm.Content;
     public string SelectedText => _vm.PluginGetSelectedText();

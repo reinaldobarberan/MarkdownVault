@@ -82,6 +82,16 @@
         "frameworkReferences": [
           "Microsoft.WindowsDesktop.App"
         ]
+      },
+      "MarkdownVault.PluginSdk/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/MarkdownVault.PluginSdk.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MarkdownVault.PluginSdk.dll": {}
+        }
       }
     }
   },
@@ -284,12 +294,18 @@
         "quicker.avalonedit.6.3.1.nupkg.sha512",
         "quicker.avalonedit.nuspec"
       ]
+    },
+    "MarkdownVault.PluginSdk/1.0.0": {
+      "type": "project",
+      "path": "PluginSdk/MarkdownVault.PluginSdk.csproj",
+      "msbuildProject": "PluginSdk/MarkdownVault.PluginSdk.csproj"
     }
   },
   "projectFileDependencyGroups": {
     "net8.0-windows7.0": [
       "CommunityToolkit.Mvvm >= 8.4.2",
       "Markdig >= 1.1.2",
+      "MarkdownVault.PluginSdk >= 1.0.0",
       "Microsoft.Web.WebView2 >= 1.0.3912.50",
       "Microsoft.Xaml.Behaviors.Wpf >= 1.1.135",
       "Quicker.AvalonEdit >= 6.3.1"
@@ -302,11 +318,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MarkdownVault.csproj",
+      "projectUniqueName": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\MarkdownVault.csproj",
       "projectName": "MarkdownVault",
-      "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\MarkdownVault.csproj",
+      "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\MarkdownVault.csproj",
       "packagesPath": "C:\\Users\\reina\\.nuget\\packages\\",
-      "outputPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVault\\obj\\",
+      "outputPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -327,7 +343,11 @@
       "frameworks": {
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
-          "projectReferences": {}
+          "projectReferences": {
+            "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\PluginSdk\\MarkdownVault.PluginSdk.csproj": {
+              "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\PluginSdk\\MarkdownVault.PluginSdk.csproj"
+            }
+          }
         }
       },
       "warningProperties": {

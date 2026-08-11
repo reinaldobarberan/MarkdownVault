@@ -5,7 +5,7 @@
         xmlns:local="clr-namespace:MarkdownVault.Views"
         xmlns:vm="clr-namespace:MarkdownVault.ViewModels"
         xmlns:models="clr-namespace:MarkdownVault.Models"
-        Title="{Binding Editor.Title}"
+        Title="{Binding FocusedGroup.Title}"
         Icon="pack://application:,,,/image/barra.ico"
         Height="800" Width="1300"
         MinHeight="500" MinWidth="800"
@@ -14,15 +14,16 @@
         Closing="Window_Closing">
 
     <Window.InputBindings>
-        <KeyBinding Key="S" Modifiers="Ctrl"            Command="{Binding Editor.SaveCommand}"/>
-        <KeyBinding Key="S" Modifiers="Ctrl+Shift"   Command="{Binding Editor.SaveAsCommand}"/>
+        <KeyBinding Key="S" Modifiers="Ctrl"            Command="{Binding FocusedGroup.SaveCommand}"/>
+        <KeyBinding Key="S" Modifiers="Ctrl+Shift"   Command="{Binding FocusedGroup.SaveAsCommand}"/>
         <KeyBinding Key="N" Modifiers="Ctrl"       Command="{Binding NewFileCommand}"/>
-        <KeyBinding Key="W" Modifiers="Ctrl"       Command="{Binding Editor.CloseTabCommand}"
-                    CommandParameter="{Binding Editor.ActiveTab}"/>
-        <KeyBinding Key="Tab" Modifiers="Ctrl"     Command="{Binding Editor.NextTabCommand}"/>
-        <KeyBinding Key="Tab" Modifiers="Ctrl+Shift" Command="{Binding Editor.PreviousTabCommand}"/>
+        <KeyBinding Key="W" Modifiers="Ctrl"       Command="{Binding FocusedGroup.CloseTabCommand}"
+                    CommandParameter="{Binding FocusedGroup.ActiveTab}"/>
+        <KeyBinding Key="Tab" Modifiers="Ctrl"     Command="{Binding FocusedGroup.NextTabCommand}"/>
+        <KeyBinding Key="Tab" Modifiers="Ctrl+Shift" Command="{Binding FocusedGroup.PreviousTabCommand}"/>
         <KeyBinding Key="OemPipe" Modifiers="Ctrl" Command="{Binding ToggleExplorerCommand}"/>
-        <KeyBinding Key="Left" Modifiers="Alt"     Command="{Binding Editor.GoBackCommand}"/>
+        <KeyBinding Key="OemPipe" Modifiers="Ctrl+Alt" Command="{Binding ToggleSplitCommand}"/>
+        <KeyBinding Key="Left" Modifiers="Alt"     Command="{Binding FocusedGroup.GoBackCommand}"/>
         <KeyBinding Key="OemPlus"  Modifiers="Ctrl" Command="{Binding IncreaseFontSizeCommand}"/>
         <KeyBinding Key="OemMinus" Modifiers="Ctrl" Command="{Binding DecreaseFontSizeCommand}"/>
         <KeyBinding Key="D0"       Modifiers="Ctrl" Command="{Binding ResetPreviewZoomCommand}"/>
@@ -77,12 +78,12 @@
 
                 <!-- Solo editor: single left pane active -->
                 <Button ToolTip="Solo editor"
-                        Command="{Binding Editor.SetViewModeCommand}"
+                        Command="{Binding SetViewModeCommand}"
                         CommandParameter="{x:Static models:ViewMode.EditorOnly}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ViewToggleButtonStyle}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Editor.ViewMode}" Value="{x:Static models:ViewMode.EditorOnly}">
+                                <DataTrigger Binding="{Binding ViewMode}" Value="{x:Static models:ViewMode.EditorOnly}">
                                     <Setter Property="Background" Value="#094771"/>
                                     <Setter Property="Foreground" Value="White"/>
                                 </DataTrigger>
@@ -103,12 +104,12 @@
 
                 <!-- Editor + vista: two side-by-side panes -->
                 <Button ToolTip="Editor y vista previa"
-                        Command="{Binding Editor.SetViewModeCommand}"
+                        Command="{Binding SetViewModeCommand}"
                         CommandParameter="{x:Static models:ViewMode.EditAndPreview}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ViewToggleButtonStyle}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Editor.ViewMode}" Value="{x:Static models:ViewMode.EditAndPreview}">
+                                <DataTrigger Binding="{Binding ViewMode}" Value="{x:Static models:ViewMode.EditAndPreview}">
                                     <Setter Property="Background" Value="#094771"/>
                                     <Setter Property="Foreground" Value="White"/>
                                 </DataTrigger>
@@ -124,12 +125,12 @@
 
                 <!-- Solo visor: single right pane active -->
                 <Button ToolTip="Solo visor"
-                        Command="{Binding Editor.SetViewModeCommand}"
+                        Command="{Binding SetViewModeCommand}"
                         CommandParameter="{x:Static models:ViewMode.ViewerOnly}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ViewToggleButtonStyle}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Editor.ViewMode}" Value="{x:Static models:ViewMode.ViewerOnly}">
+                                <DataTrigger Binding="{Binding ViewMode}" Value="{x:Static models:ViewMode.ViewerOnly}">
                                     <Setter Property="Background" Value="#094771"/>
                                     <Setter Property="Foreground" Value="White"/>
                                 </DataTrigger>
@@ -150,13 +151,43 @@
 
                 <Border Width="1" Margin="5,4" Background="{DynamicResource BorderBrush}"/>
 
-                <!-- Graph view toggle (highlighted while active) -->
-                <Button ToolTip="Vista de grafo"
-                        Command="{Binding Editor.ToggleGraphCommand}">
+                <!-- Split editor toggle (highlighted while split).
+                     Frame + divider like "Editor y vista previa", plus a "+" in the right
+                     half so the two are distinguishable at 16px: this one ADDS a pane. -->
+                <Button ToolTip="Dividir editor (Ctrl+Alt+\)"
+                        Command="{Binding ToggleSplitCommand}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ViewToggleButtonStyle}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding Editor.ShowGraph}" Value="True">
+                                <DataTrigger Binding="{Binding IsSplit}" Value="True">
+                                    <Setter Property="Background" Value="#094771"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <Viewbox Width="16" Height="16">
+                        <Grid>
+                            <Path Data="M2.5,3.5 H13.5 V12.5 H2.5 Z M8,3.5 V12.5"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.2" StrokeLineJoin="Round"/>
+                            <Path Data="M10.75,6.5 V9.5 M9.25,8 H12.25"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
+
+                <Border Width="1" Margin="5,4" Background="{DynamicResource BorderBrush}"/>
+
+                <!-- Graph view toggle (highlighted while active) -->
+                <Button ToolTip="Vista de grafo"
+                        Command="{Binding ToggleGraphCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource ViewToggleButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowGraph}" Value="True">
                                     <Setter Property="Background" Value="#094771"/>
                                 </DataTrigger>
                             </Style.Triggers>
@@ -182,8 +213,8 @@
                 <MenuItem Header="Administrar _vaults…" Click="ManageVaults_Click"/>
                 <MenuItem Header="_Nuevo archivo"     Command="{Binding NewFileCommand}"   InputGestureText="Ctrl+N"/>
                 <Separator/>
-                <MenuItem Header="_Guardar"         Command="{Binding Editor.SaveCommand}"   InputGestureText="Ctrl+S"/>
-                <MenuItem Header="Guardar _como…"   Command="{Binding Editor.SaveAsCommand}" InputGestureText="Ctrl+Shift+S"/>
+                <MenuItem Header="_Guardar"         Command="{Binding FocusedGroup.SaveCommand}"   InputGestureText="Ctrl+S"/>
+                <MenuItem Header="Guardar _como…"   Command="{Binding FocusedGroup.SaveAsCommand}" InputGestureText="Ctrl+Shift+S"/>
                 <Separator/>
                 <MenuItem Header="E_xportar vista a PNG…" Click="ExportToPng_Click" InputGestureText="Ctrl+Shift+P"/>
                 <Separator/>
@@ -193,15 +224,18 @@
                 <MenuItem Header="_Explorador"
                           Command="{Binding ToggleExplorerCommand}"
                           InputGestureText="Ctrl+\"/>
+                <MenuItem Header="_Dividir editor"
+                          Command="{Binding ToggleSplitCommand}"
+                          InputGestureText="Ctrl+Alt+\"/>
                 <Separator/>
                 <MenuItem Header="Solo _editor"
-                          Command="{Binding Editor.SetViewModeCommand}"
+                          Command="{Binding SetViewModeCommand}"
                           CommandParameter="{x:Static models:ViewMode.EditorOnly}"/>
                 <MenuItem Header="_Editor y vista previa"
-                          Command="{Binding Editor.SetViewModeCommand}"
+                          Command="{Binding SetViewModeCommand}"
                           CommandParameter="{x:Static models:ViewMode.EditAndPreview}"/>
                 <MenuItem Header="Solo _visor"
-                          Command="{Binding Editor.SetViewModeCommand}"
+                          Command="{Binding SetViewModeCommand}"
                           CommandParameter="{x:Static models:ViewMode.ViewerOnly}"/>
                 <Separator/>
                 <MenuItem Header="Aumentar fuente y zoom" Command="{Binding IncreaseFontSizeCommand}" InputGestureText="Ctrl++"/>
@@ -215,109 +249,6 @@
             </MenuItem>
             </Menu>
         </DockPanel>
-
-        <!-- ── Global tab bar (always visible, independent of view mode) ── -->
-        <Border DockPanel.Dock="Top"
-                DataContext="{Binding Editor}"
-                Background="{DynamicResource TabBarBackground}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,0,1"
-                Visibility="{Binding HasFile, Converter={StaticResource BoolToVisConverter}}">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled"
-                          CanContentScroll="False"
-                          Padding="0">
-                <ScrollViewer.Resources>
-                    <Style TargetType="ScrollBar">
-                        <Setter Property="Height" Value="3"/>
-                    </Style>
-                </ScrollViewer.Resources>
-                <ItemsControl ItemsSource="{Binding OpenTabs}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border x:Name="TabBorder"
-                                    Background="{DynamicResource TabInactiveBackground}"
-                                    BorderThickness="0,2,0,0"
-                                    BorderBrush="Transparent"
-                                    Margin="0,0,1,0"
-                                    Padding="10,5,4,5"
-                                    Cursor="Hand"
-                                    MinWidth="80" MaxWidth="200"
-                                    MouseLeftButtonDown="Tab_MouseLeftButtonDown"
-                                    MouseDown="Tab_MouseDown">
-                                <DockPanel>
-                                    <!-- Close button -->
-                                    <Button x:Name="CloseBtn"
-                                            DockPanel.Dock="Right"
-                                            Content="&#xE711;"
-                                            FontFamily="Segoe MDL2 Assets"
-                                            FontSize="9"
-                                            Width="18" Height="18"
-                                            Margin="6,0,0,0"
-                                            VerticalAlignment="Center"
-                                            Cursor="Hand"
-                                            Opacity="0"
-                                            Command="{Binding DataContext.CloseTabCommand,
-                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="CloseBg"
-                                                        Background="Transparent"
-                                                        CornerRadius="3"
-                                                        Padding="2">
-                                                    <ContentPresenter HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      TextElement.Foreground="{DynamicResource SubtleForeground}"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="CloseBg" Property="Background"
-                                                                Value="{DynamicResource TabCloseHover}"/>
-                                                        <Setter Property="Foreground" Value="White"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-
-                                    <!-- File name -->
-                                    <TextBlock x:Name="TabText"
-                                               Text="{Binding DisplayName}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TabInactiveForeground}"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"/>
-                                </DockPanel>
-                            </Border>
-                            <DataTemplate.Triggers>
-                                <!-- Show close on hover (declared first so active overrides) -->
-                                <Trigger SourceName="TabBorder" Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="CloseBtn" Property="Opacity" Value="1"/>
-                                    <Setter TargetName="TabBorder" Property="Background"
-                                            Value="{DynamicResource TabHoverBackground}"/>
-                                </Trigger>
-                                <!-- Active tab styling (declared last → wins over hover) -->
-                                <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                    <Setter TargetName="TabBorder" Property="Background"
-                                            Value="{DynamicResource TabActiveBackground}"/>
-                                    <Setter TargetName="TabBorder" Property="BorderBrush"
-                                            Value="{DynamicResource TabActiveBorder}"/>
-                                    <Setter TargetName="TabText" Property="Foreground"
-                                            Value="{DynamicResource Foreground}"/>
-                                    <Setter TargetName="CloseBtn" Property="Opacity" Value="1"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
 
         <!-- ── Status bar ── -->
         <StatusBar DockPanel.Dock="Bottom"
@@ -334,21 +265,21 @@
             <StatusBarItem>
                 <TextBlock>
                     <Run Text="Lín "/>
-                    <Run Text="{Binding Editor.CurrentLine, Mode=OneWay}"/>
+                    <Run Text="{Binding FocusedGroup.CurrentLine, Mode=OneWay}"/>
                     <Run Text=", Col "/>
-                    <Run Text="{Binding Editor.CurrentColumn, Mode=OneWay}"/>
+                    <Run Text="{Binding FocusedGroup.CurrentColumn, Mode=OneWay}"/>
                 </TextBlock>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
                 <TextBlock>
-                    <Run Text="{Binding Editor.WordCount, Mode=OneWay}"/>
+                    <Run Text="{Binding FocusedGroup.WordCount, Mode=OneWay}"/>
                     <Run Text=" palabras"/>
                 </TextBlock>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="{Binding Editor.StatusMessage, Mode=OneWay}"
+                <TextBlock Text="{Binding StatusMessage, Mode=OneWay}"
                            Foreground="{DynamicResource StatusBarForeground}"/>
             </StatusBarItem>
         </StatusBar>
@@ -379,12 +310,61 @@
                           Background="{DynamicResource SplitterBackground}"
                           ShowsPreview="True"/>
 
-            <!-- Editor -->
-            <local:EditorView Grid.Column="2"
-                              DataContext="{Binding Editor}"
-                              x:Name="EditorPanel"
-                              FontFamily="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=Window}}"
-                              FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+            <!-- Editor region (Phase 4): nested grid holding pane A / splitter / pane B.
+                 Workbench properties are reached with DataContext.X through the Window, NOT
+                 a bare {Binding X, RelativeSource=Window}: that form targets a property on the
+                 Window OBJECT, which has no ShowGraph/IsSplit, so it fails silently and
+                 Visibility falls back to its Visible default. FontFamily/FontSize below can
+                 use the bare form only because Window genuinely has those properties. -->
+            <Grid Grid.Column="2"
+                  x:Name="EditorRegion"
+                  Visibility="{Binding DataContext.ShowGraph, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisConverter}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="PaneAColumn"        Width="*" MinWidth="150"/>
+                    <ColumnDefinition x:Name="PaneSplitterColumn" Width="4"/>
+                    <ColumnDefinition x:Name="PaneBColumn"        Width="0" MinWidth="0"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Pane A — always present (Groups[0], the primary group, never auto-collapses). -->
+                <local:EditorView Grid.Column="0"
+                                  DataContext="{Binding Groups[0]}"
+                                  x:Name="EditorPanelA"
+                                  FontFamily="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+
+                <!-- Splitter between pane A and pane B — captures SplitRatio on drag (task 4.11). -->
+                <GridSplitter Grid.Column="1"
+                              x:Name="PaneSplitter"
+                              Width="4"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="{DynamicResource SplitterBackground}"
+                              ShowsPreview="True"
+                              DragCompleted="PaneSplitter_DragCompleted"
+                              Visibility="{Binding DataContext.IsSplit, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}"/>
+
+                <!-- Pane B — born empty on split (SE-1), collapses when unsplit. Binding
+                     Groups[1] fails silently while it doesn't exist yet; WPF re-evaluates it
+                     automatically on Groups' CollectionChanged (ObservableCollection indexer
+                     binding support), so it resolves the moment EnterSplit adds the group. -->
+                <local:EditorView Grid.Column="2"
+                                  DataContext="{Binding Groups[1]}"
+                                  x:Name="EditorPanelB"
+                                  FontFamily="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  Visibility="{Binding DataContext.IsSplit, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}"/>
+            </Grid>
+
+            <!-- Graph view (workbench-scoped, Phase 2/Decision 2) — replaces the whole editor
+                 region (both panes) while active. Sits as a sibling of EditorRegion in the
+                 SAME outer column rather than nested with a ColumnSpan: the outer column is
+                 already a single "*" track, so a sibling occupies the identical area with less
+                 restructuring, and reuses the GraphView bindings verified in the prior batch
+                 unchanged (deliberate, documented deviation from design §6.1's literal
+                 "ColumnSpan=3 inside the nested grid" — same visible behavior, lower risk). -->
+            <local:GraphView Grid.Column="2"
+                             DataContext="{Binding Graph}"
+                             Visibility="{Binding DataContext.ShowGraph, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}"/>
 
             <GridSplitter Grid.Column="3"
                           Width="4"
@@ -397,7 +377,7 @@
             <Border Grid.Column="4"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1,0,0,0"
-                    Visibility="{Binding Editor.ShowPreviewPanel,
+                    Visibility="{Binding ShowPreviewPanel,
                                  Converter={StaticResource BoolToVisConverter}}">
                 <!-- DefaultBackgroundColor is set in code-behind to match the
                      active theme, so file switches don't flash white/light. -->

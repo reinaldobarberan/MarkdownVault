@@ -10,13 +10,19 @@
             <StackPanel Orientation="Horizontal"
                         Visibility="{Binding IsVisible,
                                      Converter={StaticResource BoolToVisConverter}}">
-                <!-- Folder / file icon -->
-                <TextBlock Text="{Binding IsDirectory,
-                                  Converter={StaticResource BoolToIconConverter}}"
-                           FontFamily="Segoe MDL2 Assets"
+                <!-- Type-aware icon: open/closed folders, per-extension file icons -->
+                <TextBlock FontFamily="Segoe MDL2 Assets"
                            FontSize="13"
                            Margin="0,0,5,0"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource FileNodeToIconConverter}">
+                            <Binding Path="IsDirectory"/>
+                            <Binding Path="IsExpanded"/>
+                            <Binding Path="Name"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="13"/>
             </StackPanel>
         </HierarchicalDataTemplate>

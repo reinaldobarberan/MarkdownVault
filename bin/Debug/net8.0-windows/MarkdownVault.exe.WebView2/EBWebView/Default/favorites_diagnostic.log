@@ -130,3 +130,13 @@
 2026-08-02 20:37:28.759: [INFO] OnDoneLoading sync enabled: 0
 2026-08-03 13:33:50.853: [INFO] OnDoneLoading sync enabled: 0
 2026-08-03 13:42:49.506: [INFO] OnDoneLoading sync enabled: 0
+2026-08-11 23:12:57.325: [INFO] CurrentProfilePath: C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default
+2026-08-11 23:12:57.325: [INFO] Profiles total count: 1
+2026-08-11 23:12:57.327: [INFO] Profile: name=Profile 1 path=C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default lastActive=2026-08-03T13:18:12.771Z
+2026-08-11 23:12:57.327: [INFO] LastUsedProfileDir: C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default
+2026-08-11 23:12:57.327: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default lastActive=2026-08-03T13:18:12.771Z
+2026-08-11 23:12:57.327: [INFO] OnDoneLoading sync enabled: 0
+2026-08-11 23:12:57.327: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-11 23:12:57.327: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-11 23:12:57.327: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-11 23:13:02.603: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

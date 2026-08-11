@@ -1,4 +1,5 @@
 using System.IO;
+using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
 using Xunit;

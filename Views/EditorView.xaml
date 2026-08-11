@@ -54,6 +54,135 @@
 
     <DockPanel Background="{DynamicResource EditorBackground}">
 
+        <!-- ── Tab strip (per-pane, task 3.10 — moved here from MainWindow.xaml, which
+             docked it across the FULL window width; now scoped to this pane's column,
+             independent scroll/active-styling/close per SE-10). No DataContext override
+             needed: this UserControl's ambient DataContext IS the group already, so
+             OpenTabs/CloseTabCommand/HasFile resolve directly. ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource TabBarBackground}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Visibility="{Binding HasFile, Converter={StaticResource BoolToVisConverter}}">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          CanContentScroll="False"
+                          Padding="0">
+                <ScrollViewer.Resources>
+                    <Style TargetType="ScrollBar">
+                        <Setter Property="Height" Value="3"/>
+                    </Style>
+                </ScrollViewer.Resources>
+                <ItemsControl ItemsSource="{Binding OpenTabs}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="TabBorder"
+                                    Background="{DynamicResource TabInactiveBackground}"
+                                    BorderThickness="0,2,0,0"
+                                    BorderBrush="Transparent"
+                                    Margin="0,0,1,0"
+                                    Padding="10,5,4,5"
+                                    Cursor="Hand"
+                                    MinWidth="80" MaxWidth="200"
+                                    MouseLeftButtonDown="Tab_MouseLeftButtonDown"
+                                    MouseDown="Tab_MouseDown"
+                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <!-- ContextMenu content is a separate Popup visual root, so
+                                     RelativeSource AncestorType=Window does NOT resolve inside
+                                     it directly (would fail silently — the exact binding-scope
+                                     trap flagged for this batch). Standard WPF workaround:
+                                     TabBorder.Tag above carries the Window's DataContext
+                                     (MainViewModel); PlacementTarget is a plain DP set by WPF
+                                     to whatever opened the menu (TabBorder), reachable from
+                                     inside the popup via AncestorType=ContextMenu (which DOES
+                                     resolve — the MenuItem IS inside the ContextMenu's own tree). -->
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <!-- Only meaningful when split — a second pane must
+                                             exist to move the tab into (SE-12). -->
+                                        <MenuItem Header="Mover al otro panel"
+                                                  Command="{Binding PlacementTarget.Tag.MoveTabToOtherPanelCommand,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}"
+                                                  Visibility="{Binding PlacementTarget.Tag.IsSplit,
+                                                               RelativeSource={RelativeSource AncestorType=ContextMenu},
+                                                               Converter={StaticResource BoolToVisConverter}}"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <DockPanel>
+                                    <!-- Close button -->
+                                    <Button x:Name="CloseBtn"
+                                            DockPanel.Dock="Right"
+                                            Content="&#xE711;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="9"
+                                            Width="18" Height="18"
+                                            Margin="6,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Cursor="Hand"
+                                            Opacity="0"
+                                            Command="{Binding DataContext.CloseTabCommand,
+                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="CloseBg"
+                                                        Background="Transparent"
+                                                        CornerRadius="3"
+                                                        Padding="2">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"
+                                                                      TextElement.Foreground="{DynamicResource SubtleForeground}"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="CloseBg" Property="Background"
+                                                                Value="{DynamicResource TabCloseHover}"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
+                                    <!-- File name -->
+                                    <TextBlock x:Name="TabText"
+                                               Text="{Binding DisplayName}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TabInactiveForeground}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <!-- Show close on hover (declared first so active overrides) -->
+                                <Trigger SourceName="TabBorder" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CloseBtn" Property="Opacity" Value="1"/>
+                                    <Setter TargetName="TabBorder" Property="Background"
+                                            Value="{DynamicResource TabHoverBackground}"/>
+                                </Trigger>
+                                <!-- Active tab styling (declared last → wins over hover) -->
+                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                    <Setter TargetName="TabBorder" Property="Background"
+                                            Value="{DynamicResource TabActiveBackground}"/>
+                                    <Setter TargetName="TabBorder" Property="BorderBrush"
+                                            Value="{DynamicResource TabActiveBorder}"/>
+                                    <Setter TargetName="TabText" Property="Foreground"
+                                            Value="{DynamicResource Foreground}"/>
+                                    <Setter TargetName="CloseBtn" Property="Opacity" Value="1"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
         <!-- ── Toolbar ── -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource ToolBarBackground}"
@@ -170,25 +299,19 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Content area: editor OR graph view ── -->
-        <Grid>
-            <!-- AvalonEdit -->
-            <!-- SyntaxHighlighting is set in code-behind after programmatic registration -->
-            <avalonEdit:TextEditor
-                x:Name="TextEditor"
-                ShowLineNumbers="True"
-                WordWrap="True"
-                Padding="8"
-                HorizontalScrollBarVisibility="Auto"
-                VerticalScrollBarVisibility="Auto"
-                Background="{DynamicResource EditorBackground}"
-                Foreground="{DynamicResource Foreground}"
-                Visibility="{Binding ShowGraph, Converter={StaticResource InverseBoolToVisConverter}}"/>
-
-            <!-- Graph view (replaces the editor while active) -->
-            <Border Visibility="{Binding ShowGraph, Converter={StaticResource BoolToVisConverter}}">
-                <views:GraphView DataContext="{Binding Graph}"/>
-            </Border>
-        </Grid>
+        <!-- ── Content area: editor ── -->
+        <!-- Graph moved to workbench scope in Phase 2 (Decision 2) — MainWindow.xaml now
+             binds GraphView directly where this EditorView sits, toggled by the workbench's
+             ShowGraph. This UserControl no longer owns any graph-swap logic. -->
+        <!-- SyntaxHighlighting is set in code-behind after programmatic registration -->
+        <avalonEdit:TextEditor
+            x:Name="TextEditor"
+            ShowLineNumbers="True"
+            WordWrap="True"
+            Padding="8"
+            HorizontalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Auto"
+            Background="{DynamicResource EditorBackground}"
+            Foreground="{DynamicResource Foreground}"/>
     </DockPanel>
 </UserControl>

@@ -60,6 +60,33 @@ public class SettingsServiceTests : IDisposable
             reloaded.KnownVaultPaths);
     }
 
+    [Fact]
+    public void IsSplit_defaults_to_false_and_SplitRatio_defaults_to_half()
+    {
+        var settings = new SettingsService(_path).Load();
+
+        Assert.False(settings.IsSplit);
+        Assert.Equal(0.5, settings.SplitRatio);
+    }
+
+    [Fact]
+    public void IsSplit_and_SplitRatio_round_trip_through_disk()
+    {
+        // Regression guard against design C8's failure mode: FileTreeWidth/EditorColumnWidth
+        // are declared in AppSettings but never actually read or written anywhere. SplitRatio
+        // must not join that graveyard — both ends (ctor read, SaveSettings write) are wired.
+        var service  = new SettingsService(_path);
+        var settings = service.Load();
+        settings.IsSplit    = true;
+        settings.SplitRatio = 0.35;
+        service.Save(settings);
+
+        var reloaded = new SettingsService(_path).Load();
+
+        Assert.True(reloaded.IsSplit);
+        Assert.Equal(0.35, reloaded.SplitRatio);
+    }
+
     public void Dispose()
     {
         try { if (File.Exists(_path)) File.Delete(_path); } catch { /* best effort */ }

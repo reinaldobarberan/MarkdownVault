@@ -1,0 +1,12 @@
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\bin\Debug\net8.0\MarkdownVault.PluginSdk.deps.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\bin\Debug\net8.0\MarkdownVault.PluginSdk.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\bin\Debug\net8.0\MarkdownVault.PluginSdk.pdb
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.GeneratedMSBuildEditorConfig.editorconfig
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.AssemblyInfoInputs.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.AssemblyInfo.cs
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.csproj.CoreCompileInputs.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.sourcelink.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\refint\MarkdownVault.PluginSdk.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\MarkdownVault.PluginSdk.pdb
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\PluginSdk\obj\Debug\net8.0\ref\MarkdownVault.PluginSdk.dll

@@ -19,6 +19,11 @@ public class AppSettings
     public double FileTreeWidth       { get; set; } = 240;
     public double EditorColumnWidth   { get; set; } = 0;
     public double PreviewZoom         { get; set; } = 1.0;
+    // Split-editor (Phase 4): geometry persists, open documents do not (SE-3). Read in
+    // MainViewModel's ctor, written in SaveSettings — both ends wired deliberately, per
+    // design C8's warning that FileTreeWidth/EditorColumnWidth below are declared-and-dead.
+    public bool   IsSplit             { get; set; } = false;
+    public double SplitRatio          { get; set; } = 0.5;
     // Spell-check dictionary language. Empty = auto-detect from OS culture.
     // A two-letter code ("es") or a full BCP-47 tag ("es-ES") both work.
     // Useful when the OS UI language differs from the language you actually write in.
