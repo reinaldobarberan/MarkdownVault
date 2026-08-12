@@ -260,6 +260,13 @@ public partial class MainWindow : Window
             ? new GridLength(0)
             : new GridLength(1, GridUnitType.Star);
         PreviewColumn.MinWidth = mode == ViewMode.EditorOnly ? 0 : 200;
+
+        // Solo visor collapses the editor pane (and its tab strip), so show the tab strip
+        // above the preview instead — the only place left to switch files. Other modes keep
+        // it hidden (the editor pane already has its own).
+        PreviewTabStrip.Visibility = mode == ViewMode.ViewerOnly
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     // ─── Explorer toggle ─────────────────────────────────────────────────────

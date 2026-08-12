@@ -400,9 +400,20 @@
                     BorderThickness="1,0,0,0"
                     Visibility="{Binding ShowPreviewPanel,
                                  Converter={StaticResource BoolToVisConverter}}">
-                <!-- DefaultBackgroundColor is set in code-behind to match the
-                     active theme, so file switches don't flash white/light. -->
-                <wv2:WebView2 x:Name="PreviewWebView"/>
+                <DockPanel>
+                    <!-- Solo visor: the editor pane (and its own tab strip) is collapsed, so
+                         surface the focused group's tabs here so files can still be switched
+                         while reading. Visibility is driven imperatively in ApplyViewMode
+                         (only in ViewerOnly); the inner strip also self-hides when the group
+                         has no file. -->
+                    <local:TabStripView x:Name="PreviewTabStrip"
+                                        DockPanel.Dock="Top"
+                                        DataContext="{Binding FocusedGroup}"
+                                        Visibility="Collapsed"/>
+                    <!-- DefaultBackgroundColor is set in code-behind to match the
+                         active theme, so file switches don't flash white/light. -->
+                    <wv2:WebView2 x:Name="PreviewWebView"/>
+                </DockPanel>
             </Border>
         </Grid>
     </DockPanel>

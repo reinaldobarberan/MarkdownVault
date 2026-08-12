@@ -326,34 +326,6 @@ public partial class EditorView : UserControl
         editor.Focus();
     }
 
-    // ─── Tab strip event handlers (moved from MainWindow.xaml.cs, task 3.10) ──────────────────
-    // The tab strip used to be docked across the whole window, bound to Editor (the then-only
-    // group); now it lives inside this pane's own EditorView, so handlers target this pane's
-    // own _vm directly — never FocusedGroup or the Editor facade.
-
-    /// <summary>Left-click on a tab → switch to it.</summary>
-    private void Tab_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_vm is null) return;
-        if (sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
-        {
-            _vm.SwitchToTabCommand.Execute(tab);
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>Middle-click on a tab → close it.</summary>
-    private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_vm is null) return;
-        if (e.ChangedButton == MouseButton.Middle &&
-            sender is FrameworkElement fe && fe.DataContext is OpenTab tab)
-        {
-            _vm.CloseTabCommand.Execute(tab);
-            e.Handled = true;
-        }
-    }
-
     // ─── Drag & Drop ─────────────────────────────────────────────────────────
 
     private void EditorView_DragOver(object sender, DragEventArgs e)
