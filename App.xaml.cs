@@ -71,6 +71,11 @@ public partial class App : Application
         var window = new Views.MainWindow { DataContext = mainVm };
         MainWindow = window;   // so dialogs (InputDialog, LinkPicker) get the right owner
 
+        // "Comparar archivos": el VM computa/renderiza el diff y orienta el merge (testeable);
+        // acá se provee la superficie real —una Window WebView2 bidireccional— con el main
+        // window como Owner. Fábrica: el VM crea/cierra la vista según la sesión.
+        mainVm.CompareViewFactory = () => new Views.DiffWindow { Owner = window };
+
         // Keep the splash up for a short minimum, then reveal the main window.
         // Showing the main window before closing the splash keeps a window alive at all
         // times, so OnLastWindowClose shutdown never fires between the two.

@@ -530,9 +530,7 @@ public partial class MainWindow : Window
         }
 
         // Default filename based on the active tab.
-        var defaultName = "export";
-        if (_vm.FocusedGroup.ActiveTab is not null)
-            defaultName = System.IO.Path.GetFileNameWithoutExtension(_vm.FocusedGroup.ActiveTab.FilePath);
+        var defaultName = Services.ExportNaming.DefaultFileName(_vm.FocusedGroup.ActiveTab?.FilePath);
 
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
@@ -589,6 +587,68 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 $"Error al exportar la imagen:\n{ex.Message}",
+                "Error de exportación", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // ─── Export to PDF ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Prints the rendered preview to a PDF using WebView2's native
+    /// <see cref="CoreWebView2.PrintToPdfAsync"/> — same Chromium engine that paints the
+    /// on-screen preview, so the PDF matches the preview exactly (no second renderer).
+    /// Backgrounds are forced on so dark-theme pages stay readable (light text would be
+    /// invisible on the printer's default white page otherwise).
+    /// </summary>
+    private async void ExportToPdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_webViewReady || _vm is null)
+        {
+            MessageBox.Show(
+                "No hay contenido para exportar. Abrí un archivo primero.",
+                "Sin vista previa", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Default filename based on the active tab (mirrors the PNG export).
+        var defaultName = Services.ExportNaming.DefaultFileName(_vm.FocusedGroup.ActiveTab?.FilePath);
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title      = "Exportar vista previa como PDF",
+            Filter     = "PDF Document|*.pdf",
+            DefaultExt = ".pdf",
+            FileName   = defaultName
+        };
+
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            // WYSIWYG: keep backgrounds so the exported PDF matches the preview (and dark
+            // theme stays legible). Other settings keep WebView2's sensible defaults.
+            var settings = PreviewWebView.CoreWebView2.Environment.CreatePrintSettings();
+            settings.ShouldPrintBackgrounds = true;
+
+            var ok = await PreviewWebView.CoreWebView2.PrintToPdfAsync(dlg.FileName, settings);
+
+            if (ok)
+            {
+                MessageBox.Show(
+                    $"PDF exportado exitosamente:\n{dlg.FileName}",
+                    "Exportación completada", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    "No se pudo generar el PDF.", "Error de exportación",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error al exportar el PDF:\n{ex.Message}",
                 "Error de exportación", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

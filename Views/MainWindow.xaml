@@ -179,6 +179,26 @@
                     </Viewbox>
                 </Button>
 
+                <!-- Comparar archivos: aparece SOLO con el editor dividido (IsSplit); el
+                     comando se auto-deshabilita hasta que ambos paneles tengan un archivo.
+                     Ícono: dos documentos con flechas de ida y vuelta entre ellos. -->
+                <Button ToolTip="Comparar archivos (panel A ↔ B)"
+                        Command="{Binding CompareFilesCommand}"
+                        Style="{StaticResource ViewToggleButtonStyle}"
+                        Visibility="{Binding IsSplit, Converter={StaticResource BoolToVisConverter}}">
+                    <Viewbox Width="16" Height="16">
+                        <Grid>
+                            <Path Data="M2.5,3 H6.5 V13 H2.5 Z M9.5,3 H13.5 V13 H9.5 Z"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.2" StrokeLineJoin="Round"/>
+                            <Path Data="M6.9,7 H9.1 M8.2,6.1 L9.2,7 L8.2,7.9 M9.1,10 H6.9 M7.8,9.1 L6.8,10 L7.8,10.9"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.1"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Grid>
+                    </Viewbox>
+                </Button>
+
                 <Border Width="1" Margin="5,4" Background="{DynamicResource BorderBrush}"/>
 
                 <!-- Graph view toggle (highlighted while active) -->
@@ -217,6 +237,7 @@
                 <MenuItem Header="Guardar _como…"   Command="{Binding FocusedGroup.SaveAsCommand}" InputGestureText="Ctrl+Shift+S"/>
                 <Separator/>
                 <MenuItem Header="E_xportar vista a PNG…" Click="ExportToPng_Click" InputGestureText="Ctrl+Shift+P"/>
+                <MenuItem Header="Exportar a _PDF…"        Click="ExportToPdf_Click"/>
                 <Separator/>
                 <MenuItem Header="_Salir" Click="Exit_Click"/>
             </MenuItem>

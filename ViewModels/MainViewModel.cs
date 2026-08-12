@@ -144,6 +144,9 @@ public partial class MainViewModel : ObservableObject
         group.ActiveTabChanged += tab =>
         {
             if (group == FocusedGroup) SyncGraphActiveFile();
+            // "Comparar archivos" depende de que AMBOS paneles tengan pestaña activa;
+            // reevaluar al abrir/cerrar/cambiar de pestaña en cualquiera de los dos.
+            CompareFilesCommand.NotifyCanExecuteChanged();
             if (tab is null && group.OpenTabs.Count == 0) CollapseGroup(group);
         };
 
@@ -312,7 +315,9 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Persisted split geometry (SE-3). <see cref="Groups"/>.Count is the actual
     /// source of truth for whether pane B exists; this bool mirrors it for XAML and settings.</summary>
-    [ObservableProperty] private bool   _isSplit;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CompareFilesCommand))]
+    private bool   _isSplit;
 
     /// <summary>Pane A's share of the nested editor-region grid (0..1). Captured imperatively
     /// from the GridSplitter's drag, same as the existing <c>_lastExplorerWidth</c> trick —
@@ -392,6 +397,113 @@ public partial class MainViewModel : ObservableObject
         IsSplit = false;
         SaveSettings();
     }
+
+    // ─── Compare files (side-by-side diff, split-only) ─────────────────────────
+
+    /// <summary>
+    /// Inyectada en composición (App.xaml.cs) para crear la superficie de comparación
+    /// real (una <c>Window</c> WebView2, no construible bajo xUnit headless). Null en
+    /// tests que no ejercitan la presentación: <see cref="CompareFiles"/> igual computa el
+    /// diff. Los tests que sí quieren ejercitar el merge inyectan un doble en memoria.
+    /// </summary>
+    internal Func<ICompareView>? CompareViewFactory { get; set; }
+
+    // Sesión de comparación viva: los dos paneles enfrentados y el diff vigente, para
+    // poder aplicar un merge y re-renderizar sin recomputar quién compara con quién.
+    private ICompareView?           _compareView;
+    private EditorGroupViewModel?   _compareLeft;
+    private EditorGroupViewModel?   _compareRight;
+    private IReadOnlyList<DiffRow>? _compareRows;
+
+    /// <summary>
+    /// Solo tiene sentido con el editor dividido y ambos paneles con un archivo activo:
+    /// no hay dos archivos que comparar en ningún otro caso. Reevaluado cuando cambia
+    /// <see cref="IsSplit"/> (atributo) y cuando cambia la pestaña activa de cualquier
+    /// panel (<see cref="CreateGroup"/> lo notifica en <c>ActiveTabChanged</c>).
+    /// </summary>
+    private bool CanCompareFiles() =>
+        IsSplit && Groups.Count >= 2 &&
+        Groups[0].ActiveTab is not null && Groups[1].ActiveTab is not null;
+
+    /// <summary>
+    /// Abre (o refresca) la comparación lado-a-lado estilo Beyond Compare del archivo
+    /// activo de cada panel, sobre su contenido EN MEMORIA (incluye ediciones sin guardar).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCompareFiles))]
+    private void CompareFiles()
+    {
+        if (!CanCompareFiles()) return;
+
+        _compareLeft  = Groups[0];
+        _compareRight = Groups[1];
+        _compareRows  = new DiffService().Diff(_compareLeft.Content, _compareRight.Content);
+        var html = RenderCompareHtml();
+
+        // Ya hay una ventana abierta → refrescarla en vez de abrir otra.
+        if (_compareView is not null) { _compareView.Reload(html); return; }
+
+        var view = CompareViewFactory?.Invoke();
+        if (view is null) return;   // sin factory (tests de solo cómputo) → no-op de presentación
+
+        _compareView = view;
+        view.MergeRequested += OnCompareMergeRequested;
+        view.ViewClosed     += OnCompareClosed;
+        view.Show(html, IsDarkTheme, CompareTitle());
+    }
+
+    /// <summary>
+    /// Copia una línea —o el bloque de diferencias entero (◀◀/▶▶)— al otro archivo: aplica
+    /// el merge PURO al contenido de cada panel, lo que marca dirty el lado tocado (el setter
+    /// generado hace no-op si no cambió), recomputa el diff y refresca la vista. El usuario
+    /// guarda cuando quiere (Ctrl+S).
+    /// </summary>
+    internal void OnCompareMergeRequested(CompareMergeRequest req)
+    {
+        if (_compareLeft is null || _compareRight is null || _compareRows is null) return;
+
+        var (newLeft, newRight) = req.WholeBlock
+            ? DiffMerge.ApplyBlock(_compareRows, req.Row, req.Direction, _compareLeft.Content, _compareRight.Content)
+            : DiffMerge.Apply     (_compareRows, req.Row, req.Direction, _compareLeft.Content, _compareRight.Content);
+
+        _compareLeft.Content  = newLeft;
+        _compareRight.Content = newRight;
+
+        _compareRows = new DiffService().Diff(newLeft, newRight);
+        _compareView?.Reload(RenderCompareHtml());
+    }
+
+    private void OnCompareClosed()
+    {
+        if (_compareView is not null)
+        {
+            _compareView.MergeRequested -= OnCompareMergeRequested;
+            _compareView.ViewClosed     -= OnCompareClosed;
+        }
+        _compareView  = null;
+        _compareLeft  = null;
+        _compareRight = null;
+        _compareRows  = null;
+    }
+
+    private string CompareTitle() =>
+        $"Comparar: {_compareLeft!.ActiveTab?.FileName} ↔ {_compareRight!.ActiveTab?.FileName}";
+
+    private string RenderCompareHtml()
+    {
+        // Resaltado de sintaxis por lado según la extensión del archivo activo (reutiliza las
+        // definiciones de AvalonEdit; degrada a texto plano si el lenguaje no está soportado).
+        var leftSyntax  = new SyntaxHighlighter(_compareLeft!.Content,  ExtensionOf(_compareLeft));
+        var rightSyntax = new SyntaxHighlighter(_compareRight!.Content, ExtensionOf(_compareRight));
+
+        return DiffHtmlRenderer.Render(
+            _compareRows!, _compareLeft.ActiveTab?.FileName ?? "A",
+            _compareRight.ActiveTab?.FileName ?? "B", IsDarkTheme, leftSyntax, rightSyntax);
+    }
+
+    private static string? ExtensionOf(EditorGroupViewModel group) =>
+        group.ActiveTab is { FilePath: var p } && !string.IsNullOrEmpty(p)
+            ? System.IO.Path.GetExtension(p)
+            : null;
 
     // ─── External change handling (promoted from EditorGroupViewModel, Phase 3) ───────────────
 

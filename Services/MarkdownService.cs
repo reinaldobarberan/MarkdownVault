@@ -247,6 +247,10 @@ public class MarkdownService
         body.markdown-body {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
           font-size: 16px; line-height: 1.6; color: #24292f;
+          /* Explicit light background, symmetric with the dark rule below. Without it the
+             body is transparent and leans on WebView2's DefaultBackgroundColor, which is
+             stale right after a dark→light navigation → the preview "stays dark". */
+          background: #ffffff;
           padding: 24px clamp(24px, 3vw, 64px);
           max-width: min(95vw, 1600px);
           margin: 0 auto;

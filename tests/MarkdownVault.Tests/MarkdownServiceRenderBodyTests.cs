@@ -46,4 +46,35 @@ public class MarkdownServiceRenderBodyTests
 
         Assert.Contains("markdown-body dark", page);
     }
+
+    [Fact]
+    public void RenderToHtml_light_page_does_not_use_dark_body_class()
+    {
+        var page = NewService().RenderToHtml("# x", isDarkTheme: false);
+
+        Assert.DoesNotContain("markdown-body dark", page);
+    }
+
+    // Regression: the light body must carry its OWN explicit background. It used to be
+    // transparent and lean on WebView2's DefaultBackgroundColor, which is stale right
+    // after a dark→light navigation → the preview "stayed dark". The rendered document
+    // must be self-contained so the visible background never depends on host paint timing.
+    [Fact]
+    public void RenderToHtml_light_body_has_explicit_white_background()
+    {
+        var page = NewService().RenderToHtml("# x", isDarkTheme: false);
+
+        Assert.Contains("body.markdown-body", page);
+        Assert.Contains("background: #ffffff", page);
+    }
+
+    [Fact]
+    public void RenderToHtml_dark_body_keeps_its_explicit_dark_background()
+    {
+        var page = NewService().RenderToHtml("# x", isDarkTheme: true);
+
+        // Dark override must remain (higher specificity than the light rule), otherwise
+        // the new light background would bleed through in dark mode.
+        Assert.Contains("background:#0d1117", page);
+    }
 }
