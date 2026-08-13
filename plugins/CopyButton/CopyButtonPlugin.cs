@@ -64,11 +64,13 @@ public sealed class CopyButtonPlugin : IPlugin
         .mv-copy-btn.mv-copied { color: #1a7f37; border-color: #1a7f37; }
         .mv-copy-btn.mv-error  { color: #cf222e; border-color: #cf222e; }
 
-        /* Tema oscuro */
+        /* Tema oscuro. El fondo del <pre> en oscuro es #161b22; el botón DEBE usar
+           otro tono (#21262d) o queda camuflado sobre el bloque. Sube también la
+           opacidad de reposo para que se note sin depender del hover. */
         body.dark .mv-code-wrap > .mv-copy-btn {
-            color: #8b949e; background: #161b22; border-color: #30363d;
+            color: #c9d1d9; background: #21262d; border-color: #30363d; opacity: 0.75;
         }
-        body.dark .mv-copy-btn:hover { background: #21262d; }
+        body.dark .mv-copy-btn:hover { background: #30363d; }
         body.dark .mv-copy-btn.mv-copied { color: #3fb950; border-color: #3fb950; }
         body.dark .mv-copy-btn.mv-error  { color: #f85149; border-color: #f85149; }
         """;
