@@ -154,6 +154,10 @@ public partial class MainViewModel : ObservableObject
         // here — the group never reaches up to MainViewModel directly.
         group.FocusRequested += SetFocus;
 
+        // Reveal internal-link targets in the file explorer. Fires ONLY on internal-link
+        // navigation (not plain tab switches), so the tree never moves on its own otherwise.
+        group.LinkNavigated += path => FileTree.RevealFile(path);
+
         return group;
     }
 

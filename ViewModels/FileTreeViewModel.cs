@@ -1,5 +1,7 @@
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -61,6 +63,38 @@ public partial class FileTreeViewModel : ObservableObject
         RootNodes = new ObservableCollection<VaultFileNode> { ToNode(tree, null) };
         if (RootNodes.Count > 0)
             RootNodes[0].IsExpanded = true;
+    }
+
+    /// <summary>
+    /// Selects the node matching <paramref name="fullPath"/> in the tree, expanding its parent
+    /// folders so it is visible. No-op if the path is not present in the current tree. Used to
+    /// reveal the target of an internal link in the file explorer.
+    /// </summary>
+    public void RevealFile(string fullPath)
+    {
+        var node = RootNodes.Select(r => FindNode(r, fullPath)).FirstOrDefault(n => n is not null);
+        if (node is null) return;
+
+        // Expand every ancestor folder so the container is realized and visible.
+        for (var ancestor = node.Parent; ancestor is not null; ancestor = ancestor.Parent)
+            ancestor.IsExpanded = true;
+
+        // TreeView is single-select: setting IsSelected on the target clears the previous one
+        // through its TwoWay binding.
+        node.IsSelected = true;
+        SelectedNode   = node;
+    }
+
+    private static VaultFileNode? FindNode(VaultFileNode node, string fullPath)
+    {
+        if (string.Equals(node.FullPath, fullPath, StringComparison.OrdinalIgnoreCase))
+            return node;
+
+        foreach (var child in node.Children)
+            if (FindNode(child, fullPath) is { } match)
+                return match;
+
+        return null;
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────

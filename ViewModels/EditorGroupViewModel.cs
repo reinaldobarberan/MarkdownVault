@@ -101,6 +101,11 @@ public partial class EditorGroupViewModel : ObservableObject
     /// <summary>Raised before switching away from the current tab so the View can save scroll/caret.</summary>
     public event Action<OpenTab?>? ActiveTabSaving;
 
+    /// <summary>Raised when a file is opened via an internal link (only from <see cref="NavigateToLinkAsync"/>),
+    /// so the workbench can reveal that file in the file-tree. Deliberately NOT fired on plain tab
+    /// switches — internal-link navigation is the sole trigger for auto-reveal.</summary>
+    public event Action<string>? LinkNavigated;
+
     // ─── Observable state ────────────────────────────────────────────────────
 
     [ObservableProperty] private string  _currentFilePath = string.Empty;
@@ -244,6 +249,7 @@ public partial class EditorGroupViewModel : ObservableObject
             GoBackFileName = ActiveTab.FileName;
         }
         await OpenFileAsync(resolvedPath);
+        LinkNavigated?.Invoke(resolvedPath);
     }
 
     [RelayCommand]
