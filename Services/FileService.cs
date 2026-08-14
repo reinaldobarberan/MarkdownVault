@@ -181,9 +181,8 @@ public class FileService : IDisposable
                 parent.Children.Add(node);
             }
 
-            var supportedExtensions = new[] { ".md", ".mermaid", ".mmd", ".html", ".htm" };
             foreach (var file in Directory.GetFiles(parent.FullPath)
-                                   .Where(f => supportedExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                                   .Where(f => SupportedExtensions.IsViewable(f))
                                    .OrderBy(f => f))
             {
                 parent.Children.Add(new VaultFile
@@ -218,17 +217,9 @@ public class FileService : IDisposable
     /// <summary>Creates an empty file; appends .md if no supported extension is present.</summary>
     public string CreateFile(string directory, string name)
     {
-        var supportedExtensions = new[] { ".md", ".mermaid", ".mmd", ".html", ".htm" };
-        bool hasSupportedExt = false;
-        foreach (var ext in supportedExtensions)
-        {
-            if (name.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
-            {
-                hasSupportedExt = true;
-                break;
-            }
-        }
-        if (!hasSupportedExt)
+        // A name that already ends in any viewable extension (note or code) is kept as-is;
+        // anything else defaults to a markdown note.
+        if (!SupportedExtensions.Viewable.Contains(Path.GetExtension(name)))
         {
             name += ".md";
         }
@@ -279,20 +270,16 @@ public class FileService : IDisposable
         if (string.IsNullOrEmpty(VaultRoot) || !Directory.Exists(VaultRoot))
             return [];
 
-        var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".md", ".mermaid", ".mmd", ".html", ".htm" };
-
+        // Note-only: this list feeds the internal-link picker and graph, where code
+        // files have no place — you don't wikilink to a .cs.
         return Directory.EnumerateFiles(VaultRoot, "*.*", SearchOption.AllDirectories)
-            .Where(f => supportedExts.Contains(Path.GetExtension(f)))
+            .Where(f => SupportedExtensions.IsNote(f))
             .Select(f => Path.GetRelativePath(VaultRoot, f).Replace('\\', '/'))
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
     // ─── Internal link resolution ────────────────────────────────────────────
-
-    private static readonly string[] SupportedLinkExts =
-        { ".md", ".mermaid", ".mmd", ".html", ".htm" };
 
     /// <summary>
     /// Resolves an internal link target to an existing file. Resolution order:
@@ -307,8 +294,7 @@ public class FileService : IDisposable
         var currentDir = Path.GetDirectoryName(currentFilePath)!;
 
         var normalized = target.Replace('\\', '/').Trim();
-        if (!SupportedLinkExts.Contains(
-                Path.GetExtension(normalized), StringComparer.OrdinalIgnoreCase))
+        if (!SupportedExtensions.Note.Contains(Path.GetExtension(normalized)))
             normalized += ".md";
 
         // 1. Relative to the current file.
@@ -356,8 +342,7 @@ public class FileService : IDisposable
         try
         {
             all = Directory.EnumerateFiles(VaultRoot, "*.*", SearchOption.AllDirectories)
-                .Where(f => SupportedLinkExts.Contains(
-                    Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                .Where(f => SupportedExtensions.IsNote(f))
                 .ToList();
         }
         catch { return null; }

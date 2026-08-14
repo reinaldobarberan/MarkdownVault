@@ -381,7 +381,10 @@ public partial class EditorView : UserControl
         }
         else
         {
-            TextEditor.SyntaxHighlighting = null;
+            // Source-code files: use AvalonEdit's built-in definition for the extension.
+            // Returns null (plain text) for extensions it doesn't ship — the preview still
+            // highlights those via highlight.js.
+            TextEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(ext);
         }
     }
 

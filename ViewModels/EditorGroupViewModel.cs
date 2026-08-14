@@ -530,6 +530,14 @@ public partial class EditorGroupViewModel : ObservableObject
             PreviewBodyHtml = _markdownService.RenderBody(markdown);
             PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
         }
+        else if (Models.SupportedExtensions.LanguageFor(CurrentFilePath) is { } lang)
+        {
+            // Source code has no "rendered" form — wrap it in a fenced code block so the
+            // syntax-highlight plugin colours it in the preview, same trick as Mermaid.
+            var markdown = $"```{lang}\n{Content}\n```";
+            PreviewBodyHtml = _markdownService.RenderBody(markdown);
+            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
+        }
         else
         {
             PreviewBodyHtml = _markdownService.RenderBody(Content);
