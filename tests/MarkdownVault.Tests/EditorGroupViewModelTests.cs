@@ -142,6 +142,59 @@ public class EditorGroupViewModelTests : IDisposable
         Assert.Single(_dialogService.Infos);
     }
 
+    /// <summary>
+    /// Regression test for the multi-vault change: InsertInternalLink resolves
+    /// GetOwningRoot(CurrentFilePath) and calls FileService.GetVaultFiles(owningRoot) to build
+    /// the link-picker candidate list. With two vaults open at once, a file in vault A must only
+    /// ever be offered notes from vault A — never vault B's — and vice versa. Captures the
+    /// candidate list the VM hands to IDialogService.PickInternalLinkMarkdown (via
+    /// FakeDialogService.LastVaultFiles) rather than driving the real LinkPickerDialog.
+    /// </summary>
+    [Fact]
+    public async Task InsertInternalLink_TwoVaultsOpen_CandidatesScopedToOwningVault()
+    {
+        var vaultA = Path.Combine(Path.GetTempPath(), $"mvedit_vaultA_{Guid.NewGuid():N}");
+        var vaultB = Path.Combine(Path.GetTempPath(), $"mvedit_vaultB_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(vaultA);
+        Directory.CreateDirectory(vaultB);
+
+        try
+        {
+            var alphaPath = Path.Combine(vaultA, "AlphaNote.md");
+            var betaPath  = Path.Combine(vaultB, "BetaNote.md");
+            File.WriteAllText(alphaPath, "alpha");
+            File.WriteAllText(betaPath, "beta");
+
+            _fileService.AddRoot(vaultA);
+            _fileService.AddRoot(vaultB);
+
+            var vm = CreateVm();
+
+            // Active tab is in vault A -> candidates must be vault A's notes only.
+            await vm.OpenFileAsync(alphaPath);
+            vm.InsertInternalLinkCommand.Execute(null);
+
+            Assert.NotNull(_dialogService.LastVaultFiles);
+            Assert.Contains("AlphaNote.md", _dialogService.LastVaultFiles!);
+            Assert.DoesNotContain("BetaNote.md", _dialogService.LastVaultFiles!);
+
+            // Active tab moves to vault B -> candidates must flip to vault B's notes only.
+            await vm.OpenFileAsync(betaPath);
+            vm.InsertInternalLinkCommand.Execute(null);
+
+            Assert.NotNull(_dialogService.LastVaultFiles);
+            Assert.Contains("BetaNote.md", _dialogService.LastVaultFiles!);
+            Assert.DoesNotContain("AlphaNote.md", _dialogService.LastVaultFiles!);
+        }
+        finally
+        {
+            _fileService.RemoveRoot(vaultA);
+            _fileService.RemoveRoot(vaultB);
+            try { Directory.Delete(vaultA, recursive: true); } catch { /* best effort */ }
+            try { Directory.Delete(vaultB, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
     [Fact]
     public void HandleDroppedFiles_InvalidFile_ShowsError()
     {

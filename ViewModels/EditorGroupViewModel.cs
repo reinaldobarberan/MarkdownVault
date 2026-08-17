@@ -517,18 +517,25 @@ public partial class EditorGroupViewModel : ObservableObject
 
         // NOTE: set PreviewBodyHtml BEFORE PreviewHtml. The view listens on PreviewHtml
         // and reads both, so the body must already be current when that change fires.
+        //
+        // Vault-scoped resolution: render against THIS file's owning root, not the global
+        // top root, so a note from vault B previewed while vault A is also open still gets
+        // vault B's vault.local base href. Falls back to the top open root when the file
+        // sits outside every open vault (e.g. an unsaved buffer) — same as legacy behavior.
+        var vaultRoot = _fileService.GetOwningRoot(CurrentFilePath) ?? _fileService.VaultRoot;
+
         var ext = Path.GetExtension(CurrentFilePath).ToLowerInvariant();
         if (ext == ".html" || ext == ".htm")
         {
             // Raw HTML is a full document, not a fragment → force full navigation.
             PreviewBodyHtml = string.Empty;
-            PreviewHtml     = _markdownService.PrepareHtmlForPreview(Content, _fileService.VaultRoot);
+            PreviewHtml     = _markdownService.PrepareHtmlForPreview(Content, vaultRoot);
         }
         else if (ext == ".mermaid" || ext == ".mmd")
         {
             var markdown = $"```mermaid\n{Content}\n```";
             PreviewBodyHtml = _markdownService.RenderBody(markdown);
-            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
+            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, vaultRoot);
         }
         else if (Models.SupportedExtensions.LanguageFor(CurrentFilePath) is { } lang)
         {
@@ -536,12 +543,12 @@ public partial class EditorGroupViewModel : ObservableObject
             // syntax-highlight plugin colours it in the preview, same trick as Mermaid.
             var markdown = $"```{lang}\n{Content}\n```";
             PreviewBodyHtml = _markdownService.RenderBody(markdown);
-            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, _fileService.VaultRoot);
+            PreviewHtml     = _markdownService.RenderToHtml(markdown, IsDarkTheme, vaultRoot);
         }
         else
         {
             PreviewBodyHtml = _markdownService.RenderBody(Content);
-            PreviewHtml     = _markdownService.RenderToHtml(Content, IsDarkTheme, _fileService.VaultRoot);
+            PreviewHtml     = _markdownService.RenderToHtml(Content, IsDarkTheme, vaultRoot);
         }
     }
 
@@ -605,7 +612,12 @@ public partial class EditorGroupViewModel : ObservableObject
     [RelayCommand]
     private void InsertInternalLink()
     {
-        var files = _fileService.GetAllVaultFiles();
+        // Vault-scoped resolution: the link picker only offers notes from THIS tab's
+        // own owning vault, never files from another open vault. Falls back to the top
+        // open root when the file sits outside every open vault (unsaved buffer, same
+        // legacy behavior as RefreshPreview above).
+        var owningRoot = _fileService.GetOwningRoot(CurrentFilePath) ?? _fileService.VaultRoot;
+        var files = _fileService.GetVaultFiles(owningRoot ?? string.Empty);
         if (files.Count == 0)
         {
             _dialogService.ShowInfo(
@@ -615,7 +627,7 @@ public partial class EditorGroupViewModel : ObservableObject
         }
 
         var markdown = _dialogService.PickInternalLinkMarkdown(
-            files, CurrentFilePath, _fileService.VaultRoot ?? string.Empty);
+            files, CurrentFilePath, owningRoot ?? string.Empty);
         if (markdown is null) return;
 
         InsertionRequested?.Invoke(markdown, "");
@@ -629,9 +641,13 @@ public partial class EditorGroupViewModel : ObservableObject
 
         try
         {
+            // Vault-scoped resolution: pasted images land in the CURRENT tab's own
+            // vault assets/, not the top open root, so a vault-B note keeps its images
+            // in vault B even while vault A is also open.
+            var owningRoot = _fileService.GetOwningRoot(CurrentFilePath) ?? _fileService.VaultRoot;
             var fallback = HasFile ? Path.GetDirectoryName(CurrentFilePath) : null;
-            var destPath = _fileService.CopyImageToAssets(imagePath, fallback);
-            var md       = _fileService.BuildImageMarkdown(destPath);
+            var destPath = _fileService.CopyImageToAssets(owningRoot, imagePath, fallback);
+            var md       = _fileService.BuildImageMarkdown(owningRoot, destPath, "image");
             InsertionRequested?.Invoke(md, "");
         }
         catch (Exception ex)
@@ -648,14 +664,17 @@ public partial class EditorGroupViewModel : ObservableObject
         var imageExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg" };
 
+        // Vault-scoped resolution: same as InsertImage — dropped images go to the
+        // CURRENT tab's own owning vault, not the top open root.
+        var owningRoot = _fileService.GetOwningRoot(CurrentFilePath) ?? _fileService.VaultRoot;
         var fallback = HasFile ? Path.GetDirectoryName(CurrentFilePath) : null;
         foreach (var path in paths)
         {
             if (!imageExts.Contains(Path.GetExtension(path))) continue;
             try
             {
-                var destPath = _fileService.CopyImageToAssets(path, fallback);
-                InsertionRequested?.Invoke(_fileService.BuildImageMarkdown(destPath), "");
+                var destPath = _fileService.CopyImageToAssets(owningRoot, path, fallback);
+                InsertionRequested?.Invoke(_fileService.BuildImageMarkdown(owningRoot, destPath, "image"), "");
             }
             catch (Exception ex)
             {

@@ -9,6 +9,17 @@ public class AppSettings
     // Powers the "Administrar vaults" form so the user can switch between several
     // independent vaults. LastVaultPath still drives which one reopens on startup.
     public List<string> KnownVaultPaths { get; set; } = new();
+
+    // Multi-vault workspace (Model A): every root left OPEN across sessions, in open
+    // order (index 0 = top vault). Restored on startup via FileService.AddRoot per
+    // entry. Distinct from KnownVaultPaths, which never shrinks when a vault closes —
+    // this list does. Seeded once from LastVaultPath by the migration below.
+    public List<string> OpenVaultPaths { get; set; } = new();
+
+    // Guards the one-time migration of the legacy single-vault LastVaultPath into
+    // OpenVaultPaths. Set true after the first migration run so a vault the user
+    // later closes deliberately is never resurrected by re-seeding on a later launch.
+    public bool VaultPathsMigrated { get; set; } = false;
     public bool   IsDarkTheme         { get; set; } = false;
     public string FontFamily          { get; set; } = "Consolas";
     public double FontSize            { get; set; } = 14;

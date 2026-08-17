@@ -17,6 +17,11 @@ public partial class GraphViewModel : ObservableObject
 
     public GraphViewModel(GraphService graphService) => _graphService = graphService;
 
+    /// <summary>The vault root currently graphed, or <c>null</c> before the first build /
+    /// when the graph was last built with no owning root. Lets <see cref="BuildIfRootChangedAsync"/>
+    /// skip a rebuild when focus moves between tabs of the SAME vault.</summary>
+    private string? _builtRoot;
+
     // ─── Graph model ─────────────────────────────────────────────────────────
 
     public IReadOnlyList<GraphNode> Nodes { get; private set; } = [];
@@ -48,16 +53,35 @@ public partial class GraphViewModel : ObservableObject
 
     // ─── Build ───────────────────────────────────────────────────────────────
 
-    /// <summary>Rebuilds the graph from the vault and re-applies the current filter.</summary>
-    public async Task BuildAsync()
+    /// <summary>
+    /// Rebuilds the graph scoped to <paramref name="root"/> and re-applies the current filter.
+    /// Pass <c>null</c> when no tab is focused inside any open vault — the graph clears to
+    /// empty rather than falling back to some other vault (vault-scoped-resolution spec: no
+    /// cross-vault nodes/edges).
+    /// </summary>
+    public async Task BuildAsync(string? root)
     {
-        var data = await _graphService.BuildAsync();
+        _builtRoot = root;
+        var data = root is not null ? await _graphService.BuildAsync(root) : new GraphData([], []);
         Nodes = data.Nodes;
         Links = data.Links;
         ApplyLocalFilter();
         OnPropertyChanged(nameof(NoteCount));
         OnPropertyChanged(nameof(LinkCount));
         GraphRebuilt?.Invoke();
+    }
+
+    /// <summary>
+    /// Rebuilds only when <paramref name="root"/> differs from the vault currently graphed —
+    /// called on every focus change (including plain tab switches within the same vault), but
+    /// a no-op unless focus actually crossed into a different open vault (Phase 6 / D7: the
+    /// graph follows the focused tab's vault, not every tab switch).
+    /// </summary>
+    public Task BuildIfRootChangedAsync(string? root)
+    {
+        if (root is not null && string.Equals(root, _builtRoot, StringComparison.OrdinalIgnoreCase))
+            return Task.CompletedTask;
+        return BuildAsync(root);
     }
 
     /// <summary>Opens the file behind a node id (its vault-relative path).</summary>
@@ -105,5 +129,5 @@ public partial class GraphViewModel : ObservableObject
     // ─── Commands ────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task Refresh() => await BuildAsync();
+    private async Task Refresh() => await BuildAsync(_builtRoot);
 }

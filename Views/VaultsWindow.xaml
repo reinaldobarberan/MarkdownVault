@@ -27,7 +27,7 @@
                        Foreground="{DynamicResource Foreground}"/>
             <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
                        Foreground="{DynamicResource SubtleForeground}"
-                       Text="Elegí la carpeta raíz activa o agregá una nueva. Cada vault es independiente: al cambiar, se abre el árbol de esa carpeta."/>
+                       Text="Abrí o cerrá cada vault de forma independiente — podés tener varios abiertos a la vez, cada uno en su propia sección del explorador. Cerrar un vault no cierra sus pestañas abiertas."/>
         </StackPanel>
 
         <!-- ── Footer ── -->
@@ -68,12 +68,12 @@
                                                            FontWeight="SemiBold" FontSize="14"
                                                            Foreground="{DynamicResource Foreground}"
                                                            VerticalAlignment="Center"/>
-                                                <!-- Active badge -->
+                                                <!-- Open badge -->
                                                 <Border Margin="8,0,0,0" Padding="5,1" CornerRadius="3"
                                                         VerticalAlignment="Center"
                                                         Background="{DynamicResource AccentBrush}"
-                                                        Visibility="{Binding IsActive, Converter={StaticResource BoolToVisConverter}}">
-                                                    <TextBlock Text="Activo" FontSize="10" Foreground="White"/>
+                                                        Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisConverter}}">
+                                                    <TextBlock Text="Abierto" FontSize="10" Foreground="White"/>
                                                 </Border>
                                                 <!-- Missing badge -->
                                                 <Border Margin="8,0,0,0" Padding="5,1" CornerRadius="3"
@@ -91,12 +91,22 @@
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                                     VerticalAlignment="Center">
-                                            <Button Content="Abrir"
-                                                    MinWidth="64"
-                                                    IsEnabled="{Binding Exists}"
-                                                    Command="{Binding DataContext.OpenVaultCommand,
+                                            <Button MinWidth="64"
+                                                    IsEnabled="{Binding CanToggle}"
+                                                    Command="{Binding DataContext.ToggleOpenCommand,
                                                               RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding FullPath}"/>
+                                                    CommandParameter="{Binding FullPath}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                        <Setter Property="Content" Value="Abrir"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsOpen}" Value="True">
+                                                                <Setter Property="Content" Value="Cerrar"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                             <Button Content="Quitar"
                                                     MinWidth="64"
                                                     IsEnabled="{Binding IsRemovable}"

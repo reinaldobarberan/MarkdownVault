@@ -62,6 +62,7 @@ public partial class MainViewModel : ObservableObject
         FocusedGroup = Groups[0];
 
         _settings = settingsService.Load();
+        MigrateVaultPathsIfNeeded();
 
         // Graph is workbench-wide (Phase 2/Decision 2): one instance shared by every pane.
         Graph = new GraphViewModel(new GraphService(fileService));
@@ -106,12 +107,36 @@ public partial class MainViewModel : ObservableObject
             IsSplit = true;
         }
 
-        // Restore last vault if it still exists.
-        if (!string.IsNullOrWhiteSpace(_settings.LastVaultPath) &&
-            System.IO.Directory.Exists(_settings.LastVaultPath))
+        // Restore every vault root left open at last exit (multi-vault workspace).
+        // Uses AddRoot directly, same call pair OpenVaultPath now makes (Phase 5 dropped
+        // its old single-vault switch-and-close-tabs dance), so every entry opens as its
+        // own section instead of only the last one surviving.
+        foreach (var root in _settings.OpenVaultPaths)
         {
-            OpenVaultPath(_settings.LastVaultPath);
+            if (System.IO.Directory.Exists(root))
+            {
+                _fileService.AddRoot(root);
+                FileTree.AddRoot(root);
+            }
         }
+    }
+
+    /// <summary>
+    /// One-time migration (spec "One-Time Settings Migration"): seeds the new
+    /// <see cref="AppSettings.OpenVaultPaths"/> from the legacy single-vault
+    /// <see cref="AppSettings.LastVaultPath"/>, guarded by <see cref="AppSettings.VaultPathsMigrated"/>
+    /// so it only ever runs once — a vault the user later closes deliberately must not be
+    /// resurrected by re-seeding on a subsequent launch.
+    /// </summary>
+    private void MigrateVaultPathsIfNeeded()
+    {
+        if (_settings.VaultPathsMigrated) return;
+
+        if (_settings.OpenVaultPaths.Count == 0 && !string.IsNullOrWhiteSpace(_settings.LastVaultPath))
+            _settings.OpenVaultPaths.Add(_settings.LastVaultPath);
+
+        _settings.VaultPathsMigrated = true;
+        _settingsService.Save(_settings);
     }
 
     /// <summary>
@@ -143,7 +168,13 @@ public partial class MainViewModel : ObservableObject
         // for a non-primary group while split is active (CollapseGroup no-ops otherwise).
         group.ActiveTabChanged += tab =>
         {
-            if (group == FocusedGroup) SyncGraphActiveFile();
+            if (group == FocusedGroup)
+            {
+                SyncGraphActiveFile();
+                // Multi-vault: the focused pane's active tab drives VaultName (Phase 5.2) —
+                // switching tabs within the SAME focused group can move to a different vault.
+                OnPropertyChanged(nameof(VaultName));
+            }
             // "Comparar archivos" depende de que AMBOS paneles tengan pestaña activa;
             // reevaluar al abrir/cerrar/cambiar de pestaña en cualquiera de los dos.
             CompareFilesCommand.NotifyCanExecuteChanged();
@@ -215,20 +246,36 @@ public partial class MainViewModel : ObservableObject
     partial void OnShowGraphChanged(bool value)
     {
         if (!value) return;
-        SyncGraphActiveFile();
-        _ = Graph.BuildAsync();
+        var root = SyncGraphActiveFile();
+        // Unconditional rebuild: the graph may be stale from edits made while it was
+        // hidden, even when the focused tab's vault hasn't changed since it was last shown.
+        _ = Graph.BuildAsync(root);
     }
 
     [RelayCommand]
     private void ToggleGraph() => ShowGraph = !ShowGraph;
 
-    /// <summary>Pushes the focused group's active file (vault-relative path) to the graph for highlighting.</summary>
-    private void SyncGraphActiveFile()
+    /// <summary>
+    /// Pushes the focused group's active file (path relative to ITS OWNING root) to the graph
+    /// for highlighting, and — while the graph pane is visible — rebuilds the graph itself when
+    /// focus has moved to a note owned by a DIFFERENT vault than the one currently graphed
+    /// (Phase 6 / D7: the graph follows the focused tab's vault, with no cross-vault nodes or
+    /// edges — <see cref="GraphViewModel.BuildIfRootChangedAsync"/> no-ops on a same-vault tab
+    /// switch). Returns the resolved owning root (or <c>null</c>) so <see cref="OnShowGraphChanged"/>
+    /// can force an unconditional rebuild without re-resolving it.
+    /// </summary>
+    private string? SyncGraphActiveFile()
     {
-        var root = _fileService.VaultRoot;
-        Graph.ActiveFile = (FocusedGroup.ActiveTab is not null && !string.IsNullOrEmpty(root))
-            ? System.IO.Path.GetRelativePath(root, FocusedGroup.ActiveTab.FilePath).Replace('\\', '/')
+        var activeTab = FocusedGroup.ActiveTab;
+        var root      = activeTab is not null ? _fileService.GetOwningRoot(activeTab.FilePath) : null;
+        Graph.ActiveFile = (activeTab is not null && root is not null)
+            ? System.IO.Path.GetRelativePath(root, activeTab.FilePath).Replace('\\', '/')
             : string.Empty;
+
+        if (ShowGraph)
+            _ = Graph.BuildIfRootChangedAsync(root);
+
+        return root;
     }
 
     // ─── Path-uniqueness invariant (Phase 3, HARD GATE) ────────────────────────
@@ -313,6 +360,7 @@ public partial class MainViewModel : ObservableObject
         FocusedGroup = g;
         OnPropertyChanged(nameof(FocusedGroup));
         SyncGraphActiveFile();
+        OnPropertyChanged(nameof(VaultName)); // Phase 5.2: VaultName tracks the focused group's vault
     }
 
     // ─── Split (Phase 4, first user-visible change) ────────────────────────────────────────────
@@ -525,10 +573,33 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _fontSize    = 14;
     [ObservableProperty] private double _previewZoom = 1.0;
 
-    public string VaultName =>
-        string.IsNullOrEmpty(_fileService.VaultRoot)
-            ? "Sin vault abierto"
-            : System.IO.Path.GetFileName(_fileService.VaultRoot);
+    /// <summary>
+    /// Multi-vault label for the status bar / window title (Phase 5.2): with several roots
+    /// open, a single global "vault name" no longer means anything on its own, so this
+    /// prefers the FOCUSED tab's owning root — the vault the user is actually looking at —
+    /// and only falls back to a workspace-wide summary when nothing is focused.
+    /// </summary>
+    public string VaultName
+    {
+        get
+        {
+            var owningRoot = FocusedGroup.ActiveTab is not null
+                ? _fileService.GetOwningRoot(FocusedGroup.ActiveTab.FilePath)
+                : null;
+            if (owningRoot is not null)
+                return RootDisplayName(owningRoot);
+
+            return _fileService.VaultRoots.Count switch
+            {
+                0 => "Sin vault abierto",
+                1 => RootDisplayName(_fileService.VaultRoots[0]),
+                _ => $"{_fileService.VaultRoots.Count} vaults abiertos"
+            };
+        }
+    }
+
+    private static string RootDisplayName(string root) =>
+        System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(root));
 
     // ─── Commands ────────────────────────────────────────────────────────────
 
@@ -597,23 +668,43 @@ public partial class MainViewModel : ObservableObject
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Multi-vault open (Phase 5.1 — replaces the old single-vault switch-and-close-tabs
+    /// dance, matching the ctor's startup restore loop above): ADDS <paramref name="path"/>
+    /// as a new open root via <see cref="FileService.AddRoot"/>/<see cref="FileTreeViewModel.AddRoot"/>
+    /// instead of closing every tab and swapping the single root (decision D3 — opening
+    /// another vault must never touch existing tabs).
+    /// </summary>
     private void OpenVaultPath(string path)
     {
-        // Independent-vault switch: files from the previous vault don't belong to the
-        // new one, so close their tabs before swapping the root. No-op on startup and
-        // on the first open (no tabs yet). ToList() snapshot: closing pane B's last tab
-        // can trigger CollapseGroup, which mutates Groups mid-loop (SE-4) — enumerating
-        // the live collection here would throw InvalidOperationException.
-        foreach (var group in Groups.ToList())
-            group.CloseAllTabsCommand.Execute(null);
-
-        _fileService.OpenVault(path);
-        FileTree.LoadVault(path);
-        _settings.LastVaultPath = path;
+        _fileService.AddRoot(path);
+        FileTree.AddRoot(path);
+        _settings.LastVaultPath = path; // kept for the documented rollback path (design "Rollback Plan")
         RegisterKnownVault(path);
+        SyncOpenVaultPaths();
         OnPropertyChanged(nameof(VaultName));
         SaveSettings();
     }
+
+    /// <summary>
+    /// Closes an open vault root (Phase 5, mirrors <see cref="OpenVaultPath"/>): removes it
+    /// from <see cref="FileService"/>/<see cref="FileTree"/> — dropping its explorer section
+    /// and disposing its watcher — but leaves its already-open tabs open and editable
+    /// (decision D3, spec "Close Toggle Behavior").
+    /// </summary>
+    private void CloseVaultRoot(string path)
+    {
+        _fileService.RemoveRoot(path);
+        FileTree.RemoveRoot(path);
+        SyncOpenVaultPaths();
+        OnPropertyChanged(nameof(VaultName));
+        SaveSettings();
+    }
+
+    /// <summary>Mirrors the live open-root set into the persisted <see cref="AppSettings.OpenVaultPaths"/>
+    /// so the next launch restores exactly what's open now (spec "Persisted Open Set").</summary>
+    private void SyncOpenVaultPaths() =>
+        _settings.OpenVaultPaths = _fileService.VaultRoots.ToList();
 
     /// <summary>Adds a vault root to the known list (deduplicated, case-insensitive).</summary>
     private void RegisterKnownVault(string path)
@@ -625,14 +716,16 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Builds the VM behind the "Administrar vaults" form, wired to the live vault
-    /// registry, the real folder picker, and this VM's open/persist operations.
+    /// registry, the real folder picker, and this VM's open-root/close-root/persist
+    /// operations (Phase 4 open-set semantics — no single "active" vault anymore).
     /// </summary>
     public VaultsViewModel CreateVaultsViewModel() =>
         new(
             knownPaths: _settings.KnownVaultPaths,
-            activePath: _fileService.VaultRoot,
+            openPaths:  () => _fileService.VaultRoots,
             pickFolder: PickVaultFolder,
-            openVault:  OpenVaultPath,
+            openRoot:   OpenVaultPath,
+            closeRoot:  CloseVaultRoot,
             persist:    SaveSettings);
 
     private static string? PickVaultFolder()

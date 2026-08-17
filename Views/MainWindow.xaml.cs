@@ -408,8 +408,15 @@ public partial class MainWindow : Window
     {
         if (!_webViewReady || _vm is null) return;
 
-        // Re-map virtual host to current vault root so images load correctly.
-        var vaultRoot = App.FileService?.VaultRoot ?? System.IO.Path.GetTempPath();
+        // Re-map virtual host to the FOCUSED/PREVIEWED tab's OWNING root (not the global top
+        // root) so relative images resolve against the correct vault once several are open
+        // (vault-scoped-resolution spec: "Preview Host Scoped To Focused Tab"). Falls back to
+        // the top open root, then a temp dir, when no tab is focused or its file sits outside
+        // every open root (e.g. an unsaved buffer).
+        var activePath = _previewSource?.ActiveTab?.FilePath;
+        var vaultRoot = (activePath is not null ? App.FileService?.GetOwningRoot(activePath) : null)
+            ?? App.FileService?.VaultRoot
+            ?? System.IO.Path.GetTempPath();
         if (System.IO.Directory.Exists(vaultRoot))
         {
             try

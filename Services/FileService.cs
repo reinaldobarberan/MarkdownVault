@@ -4,12 +4,30 @@ using MarkdownVault.Models;
 namespace MarkdownVault.Services;
 
 /// <summary>
-/// Manages vault I/O: opening vaults, building the file tree, CRUD operations,
-/// and watching for external changes via <see cref="FileSystemWatcher"/>.
+/// A vault-scoped file-system event: <paramref name="Root"/> is the open vault root whose
+/// watcher fired it (closed over at watcher-creation time), so subscribers can refresh only
+/// the affected section instead of rebuilding everything.
+/// </summary>
+public record VaultChange(string Root, FileSystemEventArgs Args);
+
+/// <summary>
+/// Manages vault I/O across one or more open vault roots: opening/closing roots, building
+/// file trees, CRUD operations, and watching for external changes via one
+/// <see cref="FileSystemWatcher"/> per root.
 /// </summary>
 public class FileService : IDisposable
 {
-    private FileSystemWatcher? _watcher;
+    // ─── Root set (copy-on-write) ───────────────────────────────────────────────
+    //
+    // _vaultRoots is swapped (never mutated in place) under _rootsLock so that readers —
+    // GetOwningRoot, GetVaultFiles, VaultRoots itself — can iterate a snapshot without ever
+    // taking the lock or seeing a torn collection, even while a watcher thread-pool callback
+    // is mid-flight during an AddRoot/RemoveRoot. The watcher dictionary is guarded by the
+    // same lock since its membership must stay consistent with the roots list.
+    private readonly object _rootsLock = new();
+    private List<string> _vaultRoots = [];
+    private readonly Dictionary<string, FileSystemWatcher> _watchers =
+        new(StringComparer.OrdinalIgnoreCase);
 
     // Last write-time the app itself produced for a path, used to tell our own
     // saves apart from external edits. Accessed from both the UI thread (writes)
@@ -26,28 +44,102 @@ public class FileService : IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan SelfWriteGuard = TimeSpan.FromSeconds(2);
 
-    /// <summary>Root directory of the currently open vault, or <c>null</c> when none is open.</summary>
-    public string? VaultRoot { get; private set; }
+    /// <summary>Every currently open vault root, in open order. Lock-free snapshot read.</summary>
+    public IReadOnlyList<string> VaultRoots => _vaultRoots;
 
-    /// <summary>Raised on the thread pool whenever the vault's file system changes.</summary>
-    public event EventHandler<FileSystemEventArgs>? VaultChanged;
+    /// <summary>
+    /// Legacy single-root accessor, preserved for callers not yet migrated to
+    /// <see cref="VaultRoots"/> (Phases 2-7): the first/top open root, or <c>null</c> when
+    /// none is open.
+    /// </summary>
+    public string? VaultRoot => _vaultRoots.Count > 0 ? _vaultRoots[0] : null;
+
+    /// <summary>Raised on the thread pool whenever an open vault root's file system changes.</summary>
+    public event EventHandler<VaultChange>? VaultChanged;
 
     /// <summary>
     /// Raised (on a thread-pool thread) when an open file's <em>content</em> is modified
     /// by an external process — i.e. a watcher Changed event that is not one of the app's
     /// own saves. Subscribers must marshal to the UI thread before touching view state.
+    /// Stays path-keyed (not root-keyed): subscribers already filter down to open files.
     /// </summary>
     public event EventHandler<FileSystemEventArgs>? FileChangedExternally;
 
     // ─── Vault lifecycle ──────────────────────────────────────────────────────
 
-    /// <summary>Sets the vault root and starts watching for external changes.</summary>
+    /// <summary>
+    /// Legacy single-root entry point, preserved for callers not yet migrated to
+    /// <see cref="AddRoot"/>/<see cref="RemoveRoot"/> (Phase 5). Replaces the entire open-root
+    /// set with just <paramref name="path"/>, matching the pre-multi-vault "switch vault"
+    /// behavior.
+    /// </summary>
     public void OpenVault(string path)
     {
-        VaultRoot = path;
+        foreach (var root in _vaultRoots.ToList())
+            RemoveRoot(root);
+        AddRoot(path);
+    }
 
-        _watcher?.Dispose();
-        _watcher = new FileSystemWatcher(path)
+    /// <summary>
+    /// Adds <paramref name="path"/> to the open root set and starts watching it. Idempotent
+    /// and case-insensitive: a no-op (no duplicate section, no duplicate watcher) when the
+    /// root is already open.
+    /// </summary>
+    public void AddRoot(string path)
+    {
+        var normalized = Path.GetFullPath(path);
+
+        lock (_rootsLock)
+        {
+            if (_vaultRoots.Any(r => string.Equals(r, normalized, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            var updated = new List<string>(_vaultRoots) { normalized };
+            _vaultRoots = updated;
+            _watchers[normalized] = CreateWatcherForRoot(normalized);
+        }
+    }
+
+    /// <summary>
+    /// Removes <paramref name="path"/> from the open root set and disposes its watcher.
+    /// Idempotent: a no-op when the root isn't open. Open tabs from that root are left
+    /// untouched by design — only the caller's tree section and watcher go away.
+    /// </summary>
+    public void RemoveRoot(string path)
+    {
+        var normalized = Path.GetFullPath(path);
+        FileSystemWatcher? removed = null;
+
+        lock (_rootsLock)
+        {
+            var match = _vaultRoots.FirstOrDefault(
+                r => string.Equals(r, normalized, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+                return;
+
+            // Swap the root out of the visible list FIRST: an in-flight watcher callback that
+            // resolves its path after this point sees an unowned path and no-ops, even though
+            // its watcher isn't disposed yet.
+            var updated = new List<string>(_vaultRoots);
+            updated.Remove(match);
+            _vaultRoots = updated;
+
+            if (_watchers.Remove(match, out var watcher))
+                removed = watcher;
+        }
+
+        if (removed is not null)
+        {
+            removed.EnableRaisingEvents = false;
+            removed.Dispose();
+        }
+    }
+
+    /// <summary>Builds the per-root watcher: tree-refresh events carry the root, content-change
+    /// detection stays path-keyed and shared across all roots.</summary>
+    private FileSystemWatcher CreateWatcherForRoot(string root)
+    {
+        var watcher = new FileSystemWatcher(root)
         {
             IncludeSubdirectories = true,
             NotifyFilter         = NotifyFilters.FileName
@@ -55,11 +147,13 @@ public class FileService : IDisposable
                                  | NotifyFilters.LastWrite,
             EnableRaisingEvents  = true
         };
-        // Tree refresh (as before).
-        _watcher.Created += (s, e) => VaultChanged?.Invoke(this, e);
-        _watcher.Deleted += (s, e) => VaultChanged?.Invoke(this, e);
-        _watcher.Renamed += (s, e) => VaultChanged?.Invoke(this, new FileSystemEventArgs(
-            WatcherChangeTypes.Changed, Path.GetDirectoryName(e.FullPath)!, e.Name));
+
+        // Tree refresh: closes over `root` so VaultChanged always tells subscribers which
+        // section to refresh, without them having to re-derive it via GetOwningRoot.
+        watcher.Created += (s, e) => VaultChanged?.Invoke(this, new VaultChange(root, e));
+        watcher.Deleted += (s, e) => VaultChanged?.Invoke(this, new VaultChange(root, e));
+        watcher.Renamed += (s, e) => VaultChanged?.Invoke(this, new VaultChange(root, new FileSystemEventArgs(
+            WatcherChangeTypes.Changed, Path.GetDirectoryName(e.FullPath)!, e.Name)));
 
         // External content-change detection. All three routes converge on the same
         // filter so we cover every save strategy an external editor might use:
@@ -67,9 +161,11 @@ public class FileService : IDisposable
         //   • temp file + atomic rename (VS Code…)  → Renamed (FullPath = final name)
         //   • delete + recreate                     → Created
         // IsExternalChange suppresses our own saves and collapses duplicate bursts.
-        _watcher.Changed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
-        _watcher.Created += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
-        _watcher.Renamed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+        watcher.Changed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+        watcher.Created += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+        watcher.Renamed += (s, e) => NotifyIfExternalContentChange(e.FullPath, e);
+
+        return watcher;
     }
 
     /// <summary>
@@ -262,34 +358,85 @@ public class FileService : IDisposable
     // ─── Vault file listing ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns a flat, sorted list of all supported files in the vault as
-    /// forward-slash relative paths (e.g. <c>subfolder/notes.md</c>).
+    /// Returns a flat, sorted list of all supported note files under <paramref name="root"/>
+    /// as forward-slash relative paths (e.g. <c>subfolder/notes.md</c>), scoped to that one
+    /// root only.
     /// </summary>
-    public List<string> GetAllVaultFiles()
+    public List<string> GetVaultFiles(string root)
     {
-        if (string.IsNullOrEmpty(VaultRoot) || !Directory.Exists(VaultRoot))
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
             return [];
 
         // Note-only: this list feeds the internal-link picker and graph, where code
         // files have no place — you don't wikilink to a .cs.
-        return Directory.EnumerateFiles(VaultRoot, "*.*", SearchOption.AllDirectories)
+        return Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
             .Where(f => SupportedExtensions.IsNote(f))
-            .Select(f => Path.GetRelativePath(VaultRoot, f).Replace('\\', '/'))
+            .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
+    /// <summary>
+    /// Legacy aggregate accessor, preserved for callers not yet migrated to
+    /// <see cref="GetVaultFiles"/> (Phase 7): every note across every open root, combined.
+    /// With a single root open (today's default) this is identical to the old behavior.
+    /// </summary>
+    public List<string> GetAllVaultFiles()
+    {
+        var roots = _vaultRoots;
+        return roots.Count switch
+        {
+            0 => [],
+            1 => GetVaultFiles(roots[0]),
+            _ => roots.SelectMany(GetVaultFiles)
+                       .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                       .ToList()
+        };
+    }
+
+    // ─── Owning-root resolution ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the open vault root that contains <paramref name="path"/> — the longest
+    /// matching prefix when roots are nested/overlapping — or <c>null</c> if the path is
+    /// outside every open root (including when none are open). Never throws.
+    /// </summary>
+    public string? GetOwningRoot(string path)
+    {
+        string normalized;
+        try { normalized = Path.GetFullPath(path); }
+        catch { return null; }
+
+        string? best = null;
+        foreach (var root in _vaultRoots) // lock-free snapshot read
+        {
+            if (!IsPathUnderRoot(root, normalized)) continue;
+            if (best is null || root.Length > best.Length)
+                best = root;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> is inside any currently open vault root, or when no
+    /// roots are open at all (preserves the pre-multi-vault behavior of never restricting a
+    /// standalone file with no vault open).
+    /// </summary>
+    public bool IsInsideVault(string path) => _vaultRoots.Count == 0 || GetOwningRoot(path) is not null;
+
     // ─── Internal link resolution ────────────────────────────────────────────
 
     /// <summary>
-    /// Resolves an internal link target to an existing file. Resolution order:
-    /// (1) relative to the current file's directory (for <c>[text](rel/path.md)</c>
-    /// links), (2) anywhere in the vault by name/path — Obsidian-style — so a
-    /// <c>[[Note]]</c> link finds <c>Note.md</c> even in another folder, and
-    /// (3) only if still not found, creates a new note next to the current file.
-    /// Throws when the target would escape the vault root.
+    /// Resolves an internal link target to an existing file, scoped to <paramref name="root"/>
+    /// only — never searches or creates outside it. Resolution order: (1) relative to the
+    /// current file's directory (for <c>[text](rel/path.md)</c> links), (2) anywhere inside
+    /// <paramref name="root"/> by name/path — Obsidian-style — so a <c>[[Note]]</c> link finds
+    /// <c>Note.md</c> even in another folder of the SAME vault, and (3) only if still not
+    /// found, creates a new note next to the current file. Throws when the target would escape
+    /// <paramref name="root"/>. A <c>null</c> root means no scope constraint (legacy behavior
+    /// for a file outside every open vault).
     /// </summary>
-    public string ResolveInternalLink(string target, string currentFilePath)
+    public string ResolveInternalLink(string? root, string target, string currentFilePath)
     {
         var currentDir = Path.GetDirectoryName(currentFilePath)!;
 
@@ -299,16 +446,16 @@ public class FileService : IDisposable
 
         // 1. Relative to the current file.
         var relResolved = Path.GetFullPath(Path.Combine(currentDir, normalized));
-        if (IsInsideVault(relResolved) && File.Exists(relResolved))
+        if (IsPathUnderRoot(root, relResolved) && File.Exists(relResolved))
             return relResolved;
 
-        // 2. Search the whole vault (by relative-path suffix, then by filename).
-        var found = FindInVault(normalized, currentDir);
+        // 2. Search the owning vault only (by relative-path suffix, then by filename).
+        var found = FindInVault(root, normalized, currentDir);
         if (found is not null)
             return found;
 
         // 3. Not found anywhere → create a new note next to the current file.
-        if (!IsInsideVault(relResolved))
+        if (!IsPathUnderRoot(root, relResolved))
             throw new InvalidOperationException("El enlace apunta fuera del vault.");
 
         Directory.CreateDirectory(Path.GetDirectoryName(relResolved)!);
@@ -318,30 +465,46 @@ public class FileService : IDisposable
         return relResolved;
     }
 
-    /// <summary>True when <paramref name="fullPath"/> is inside the open vault (or no vault is open).</summary>
-    private bool IsInsideVault(string fullPath)
+    /// <summary>
+    /// Legacy entry point, preserved for callers not yet migrated to the root-aware overload
+    /// (Phase 7): resolves <paramref name="currentFilePath"/>'s owning root itself, falling
+    /// back to the top open root.
+    /// </summary>
+    public string ResolveInternalLink(string target, string currentFilePath)
     {
-        if (VaultRoot is null) return true;
-        var root = VaultRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(fullPath, VaultRoot, StringComparison.OrdinalIgnoreCase);
+        var root = GetOwningRoot(currentFilePath) ?? VaultRoot;
+        return ResolveInternalLink(root, target, currentFilePath);
     }
 
     /// <summary>
-    /// Finds an existing vault file for a link target. A path-qualified target
-    /// (<c>Chile/Incidente.md</c>) matches by relative-path suffix; a bare name
-    /// (<c>Incidente.md</c>) matches by filename, preferring the current folder
-    /// then the shortest path.
+    /// True when <paramref name="fullPath"/> is inside <paramref name="root"/>, or when
+    /// <paramref name="root"/> is <c>null</c> (no scope constraint — preserves legacy
+    /// permissive behavior for a file outside every open vault).
     /// </summary>
-    private string? FindInVault(string normalizedTarget, string preferredDir)
+    private static bool IsPathUnderRoot(string? root, string fullPath)
     {
-        if (string.IsNullOrEmpty(VaultRoot) || !Directory.Exists(VaultRoot))
+        if (root is null) return true;
+        var withSep = root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(withSep, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Finds an existing file for a link target, searching only inside <paramref name="root"/>
+    /// (never another open vault). A path-qualified target (<c>Chile/Incidente.md</c>) matches
+    /// by relative-path suffix; a bare name (<c>Incidente.md</c>) matches by filename,
+    /// preferring the current folder then the shortest path. Returns <c>null</c> when
+    /// <paramref name="root"/> is <c>null</c>/missing or nothing matches.
+    /// </summary>
+    private static string? FindInVault(string? root, string normalizedTarget, string preferredDir)
+    {
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
             return null;
 
         List<string> all;
         try
         {
-            all = Directory.EnumerateFiles(VaultRoot, "*.*", SearchOption.AllDirectories)
+            all = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
                 .Where(f => SupportedExtensions.IsNote(f))
                 .ToList();
         }
@@ -352,7 +515,7 @@ public class FileService : IDisposable
         {
             var suffix = "/" + normalizedTarget;
             var byPath = all.FirstOrDefault(f =>
-                ("/" + Path.GetRelativePath(VaultRoot, f).Replace('\\', '/'))
+                ("/" + Path.GetRelativePath(root, f).Replace('\\', '/'))
                     .EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
             if (byPath is not null) return byPath;
         }
@@ -372,12 +535,13 @@ public class FileService : IDisposable
     // ─── Image handling ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Copies an image to the <c>assets/</c> sub-directory of the vault (or of
-    /// <paramref name="fallbackDir"/> when no vault is open), avoiding name collisions.
+    /// Copies an image to the <c>assets/</c> sub-directory of <paramref name="root"/> (or of
+    /// <paramref name="fallbackDir"/> when <paramref name="root"/> is <c>null</c>), avoiding
+    /// name collisions.
     /// </summary>
-    public string CopyImageToAssets(string sourcePath, string? fallbackDir = null)
+    public string CopyImageToAssets(string? root, string sourcePath, string? fallbackDir)
     {
-        var baseDir = VaultRoot ?? fallbackDir
+        var baseDir = root ?? fallbackDir
             ?? throw new InvalidOperationException(
                 "No hay ningún vault abierto y no hay directorio disponible. " +
                 "Abre un vault (Archivo → Abrir vault) o guarda el archivo actual primero.");
@@ -398,16 +562,42 @@ public class FileService : IDisposable
     }
 
     /// <summary>
-    /// Returns a Markdown-style image reference relative to the vault root.
-    /// Example: <c>![image](assets/photo.png)</c>
+    /// Legacy entry point, preserved for callers not yet migrated to the root-aware overload
+    /// (Phase 7): uses the top open root, same as the pre-multi-vault single-vault behavior.
     /// </summary>
-    public string BuildImageMarkdown(string imagePath, string altText = "image")
+    public string CopyImageToAssets(string sourcePath, string? fallbackDir = null) =>
+        CopyImageToAssets(VaultRoot, sourcePath, fallbackDir);
+
+    /// <summary>
+    /// Returns a Markdown-style image reference relative to <paramref name="root"/>.
+    /// Example: <c>![image](assets/photo.png)</c>. Falls back to just the file name when
+    /// <paramref name="root"/> is <c>null</c>.
+    /// </summary>
+    public string BuildImageMarkdown(string? root, string imagePath, string altText)
     {
-        var rel = VaultRoot is not null
-            ? Path.GetRelativePath(VaultRoot, imagePath).Replace('\\', '/')
+        var rel = root is not null
+            ? Path.GetRelativePath(root, imagePath).Replace('\\', '/')
             : Path.GetFileName(imagePath);
         return $"![{altText}]({rel})";
     }
 
-    public void Dispose() => _watcher?.Dispose();
+    /// <summary>
+    /// Legacy entry point, preserved for callers not yet migrated to the root-aware overload
+    /// (Phase 7): uses the top open root, same as the pre-multi-vault single-vault behavior.
+    /// </summary>
+    public string BuildImageMarkdown(string imagePath, string altText = "image") =>
+        BuildImageMarkdown(VaultRoot, imagePath, altText);
+
+    // ─── Disposal ─────────────────────────────────────────────────────────────
+
+    /// <summary>Stops and disposes every open root's watcher.</summary>
+    public void Dispose()
+    {
+        lock (_rootsLock)
+        {
+            foreach (var watcher in _watchers.Values)
+                watcher.Dispose();
+            _watchers.Clear();
+        }
+    }
 }

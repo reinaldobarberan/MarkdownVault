@@ -36,8 +36,11 @@ public partial class FileTreeViewModel : ObservableObject
     public FileTreeViewModel(FileService fileService)
     {
         _fileService = fileService;
-        _fileService.VaultChanged += (_, _) =>
-            Application.Current.Dispatcher.Invoke(Refresh);
+
+        // Scoped refresh (multi-root): the watcher tells us WHICH root changed, so only
+        // that section rebuilds instead of every open vault's tree.
+        _fileService.VaultChanged += (_, change) =>
+            Application.Current.Dispatcher.Invoke(() => RefreshRoot(change.Root));
     }
 
     // ─── Properties ──────────────────────────────────────────────────────────
@@ -56,13 +59,50 @@ public partial class FileTreeViewModel : ObservableObject
 
     // ─── Public API ──────────────────────────────────────────────────────────
 
-    /// <summary>Builds the tree from the vault on disk.</summary>
+    /// <summary>
+    /// Legacy single-root entry point, preserved for callers not yet migrated to
+    /// <see cref="AddRoot"/>/<see cref="RemoveRoot"/> (Phase 5): replaces every open
+    /// section with just <paramref name="path"/>, matching the pre-multi-vault
+    /// "switch vault" behavior.
+    /// </summary>
     public void LoadVault(string path)
     {
-        var tree = _fileService.BuildTree(path);
-        RootNodes = new ObservableCollection<VaultFileNode> { ToNode(tree, null) };
-        if (RootNodes.Count > 0)
-            RootNodes[0].IsExpanded = true;
+        RootNodes.Clear();
+        AddRoot(path);
+    }
+
+    /// <summary>
+    /// Adds <paramref name="path"/> as a new top-level section in <see cref="RootNodes"/>,
+    /// built fresh from disk. Idempotent: a no-op (no duplicate section) when the root is
+    /// already open — mirrors <see cref="FileService.AddRoot"/>'s dedup so the two stay
+    /// in sync. Mutates <see cref="RootNodes"/> in place; every other open root's section
+    /// is left untouched.
+    /// </summary>
+    public void AddRoot(string path)
+    {
+        var normalized = Path.GetFullPath(path);
+        if (RootNodes.Any(r => string.Equals(r.FullPath, normalized, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var tree = _fileService.BuildTree(normalized);
+        var node = ToNode(tree, null);
+        node.IsExpanded = true;
+        RootNodes.Add(node);
+    }
+
+    /// <summary>
+    /// Removes <paramref name="path"/>'s section from <see cref="RootNodes"/>, if present.
+    /// Idempotent: a no-op when the root isn't open. Does not touch any open editor tab —
+    /// closing a vault leaves its tabs open per design (only the sidebar section and the
+    /// underlying <see cref="FileService"/> watcher go away).
+    /// </summary>
+    public void RemoveRoot(string path)
+    {
+        var normalized = Path.GetFullPath(path);
+        var match = RootNodes.FirstOrDefault(
+            r => string.Equals(r.FullPath, normalized, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+            RootNodes.Remove(match);
     }
 
     /// <summary>
@@ -117,11 +157,12 @@ public partial class FileTreeViewModel : ObservableObject
             return;
         }
 
-        var name = InputDialog.Prompt("Nuevo archivo", "Nombre del archivo:", "NuevoArchivo.md");
+        var name = InputDialog.Prompt("Nuevo archivo",
+            $"Nombre del archivo (en {TargetDisplayName(dir)}):", "NuevoArchivo.md");
         if (string.IsNullOrWhiteSpace(name)) return;
 
         var path = _fileService.CreateFile(dir, name);
-        Refresh();
+        RefreshOwnerOf(dir);
         FileOpenRequested?.Invoke(path);
     }
 
@@ -136,11 +177,12 @@ public partial class FileTreeViewModel : ObservableObject
             return;
         }
 
-        var name = InputDialog.Prompt("Nueva carpeta", "Nombre de la carpeta:", "Nueva carpeta");
+        var name = InputDialog.Prompt("Nueva carpeta",
+            $"Nombre de la carpeta (en {TargetDisplayName(dir)}):", "Nueva carpeta");
         if (string.IsNullOrWhiteSpace(name)) return;
 
         _fileService.CreateDirectory(dir, name);
-        Refresh();
+        RefreshOwnerOf(dir);
     }
 
     [RelayCommand]
@@ -151,8 +193,11 @@ public partial class FileTreeViewModel : ObservableObject
         var newName = InputDialog.Prompt("Renombrar", "Nuevo nombre:", node.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == node.Name) return;
 
+        // Root doesn't change on a rename (same directory, new name), so the pre-rename
+        // path still resolves to the right owning root for the post-rename refresh.
+        var owningRoot = _fileService.GetOwningRoot(node.FullPath);
         _fileService.Rename(node.FullPath, newName);
-        Refresh();
+        if (owningRoot is not null) RefreshRoot(owningRoot);
     }
 
     [RelayCommand]
@@ -165,8 +210,11 @@ public partial class FileTreeViewModel : ObservableObject
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes) return;
 
+        // GetOwningRoot is a string-prefix match, not a disk check, so it still resolves
+        // correctly after Delete removes the path.
+        var owningRoot = _fileService.GetOwningRoot(node.FullPath);
         _fileService.Delete(node.FullPath);
-        Refresh();
+        if (owningRoot is not null) RefreshRoot(owningRoot);
     }
 
     // ─── Search ──────────────────────────────────────────────────────────────
@@ -199,19 +247,70 @@ public partial class FileTreeViewModel : ObservableObject
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private void Refresh()
+    /// <summary>
+    /// Rebuilds one root's section from disk in place — used both by the scoped
+    /// <see cref="FileService.VaultChanged"/> handler and by the CRUD commands below, so a
+    /// local create/rename/delete refreshes only the affected vault, never every open one.
+    /// A stale root (already closed via <see cref="RemoveRoot"/>, e.g. a late watcher
+    /// callback) is silently ignored.
+    /// </summary>
+    private void RefreshRoot(string root)
     {
-        if (_fileService.VaultRoot is not null)
-            LoadVault(_fileService.VaultRoot);
+        var index = -1;
+        for (var i = 0; i < RootNodes.Count; i++)
+        {
+            if (string.Equals(RootNodes[i].FullPath, root, StringComparison.OrdinalIgnoreCase))
+            {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) return;
+
+        var wasExpanded = RootNodes[index].IsExpanded;
+        var tree = _fileService.BuildTree(root);
+        var node = ToNode(tree, null);
+        node.IsExpanded = wasExpanded;
+        RootNodes[index] = node;
     }
 
+    /// <summary>Refreshes whichever open root owns <paramref name="path"/>, if any.</summary>
+    private void RefreshOwnerOf(string path)
+    {
+        if (_fileService.GetOwningRoot(path) is { } root)
+            RefreshRoot(root);
+    }
+
+    /// <summary>
+    /// Resolves the directory a new file/folder should be created in: the selected node's
+    /// own directory, or — with nothing selected — the top (first) open vault root
+    /// (spec "New File Default Target" / proposal decision #1).
+    /// </summary>
     private string? TargetDirectory() =>
         SelectedNode switch
         {
             { IsDirectory: true }  n => n.FullPath,
             { IsDirectory: false } n => Path.GetDirectoryName(n.FullPath),
-            _                        => _fileService.VaultRoot
+            _                        => _fileService.VaultRoots.Count > 0 ? _fileService.VaultRoots[0] : null
         };
+
+    /// <summary>
+    /// Human-readable label for a create-target directory, shown in the new-file/new-folder
+    /// dialog so it's never a surprise which vault a no-selection create lands in: the vault
+    /// name alone at root level, or "VaultName/sub/folder" further down.
+    /// </summary>
+    private string TargetDisplayName(string dir)
+    {
+        var root = _fileService.GetOwningRoot(dir);
+        if (root is null) return Path.GetFileName(dir);
+
+        var vaultName = Path.GetFileName(Path.TrimEndingDirectorySeparator(root));
+        if (string.Equals(dir, root, StringComparison.OrdinalIgnoreCase))
+            return vaultName;
+
+        var relative = Path.GetRelativePath(root, dir).Replace('\\', '/');
+        return $"{vaultName}/{relative}";
+    }
 
     private static VaultFileNode ToNode(Models.VaultFile file, VaultFileNode? parent)
     {

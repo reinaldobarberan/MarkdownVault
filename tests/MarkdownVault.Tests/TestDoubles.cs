@@ -25,12 +25,23 @@ internal sealed class FakeDialogService : IDialogService
     public List<string> Infos  { get; } = new();
     public int ConfirmCount { get; private set; }
 
+    // Captures the candidate list / root the VM last handed to the link picker, so tests
+    // can assert on scoping (e.g. vault-scoped wikilink autocomplete) without needing the
+    // real LinkPickerDialog UI.
+    public IReadOnlyList<string>? LastVaultFiles { get; private set; }
+    public string? LastVaultRoot { get; private set; }
+
     public ConfirmResult ConfirmSaveChanges(string fileName) { ConfirmCount++; return ConfirmResult; }
     public void ShowError(string m, string t) => Errors.Add(m);
     public void ShowInfo (string m, string t) => Infos.Add(m);
     public string? AskSaveFilePath(string s, string f, string d) => SavePathResult;
     public string? AskImagePath() => ImagePathResult;
-    public string? PickInternalLinkMarkdown(IReadOnlyList<string> f, string c, string v) => LinkMarkdownResult;
+    public string? PickInternalLinkMarkdown(IReadOnlyList<string> f, string c, string v)
+    {
+        LastVaultFiles = f;
+        LastVaultRoot  = v;
+        return LinkMarkdownResult;
+    }
 }
 
 /// <summary>Contribución Markdown de prueba (identidad por referencia).</summary>

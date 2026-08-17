@@ -5,9 +5,15 @@ namespace MarkdownVault.Tests;
 
 /// <summary>
 /// Cubre <see cref="VaultsViewModel"/>: la lógica del formulario de administración de
-/// vaults (listar, agregar una nueva carpeta raíz, cambiar de vault y quitar entradas).
-/// Todos los efectos externos (selección de carpeta, apertura real del vault y
-/// persistencia) se inyectan como delegados, así el VM queda libre de UI y de I/O.
+/// vaults (listar, agregar una nueva carpeta raíz, abrir/cerrar como conjunto de vaults
+/// abiertos — Model A multi-root, sin selección única — y quitar entradas). Todos los
+/// efectos externos (selección de carpeta, apertura/cierre real de un root y persistencia)
+/// se inyectan como delegados, así el VM queda libre de UI y de I/O.
+///
+/// Nota: este archivo fue actualizado mecánicamente a la API open-set del Phase 4
+/// (Activate/IsActive → ToggleOpen/IsOpen) para mantener la solución compilando tras el
+/// cambio de contrato de VaultsViewModel. Task 8.4 (tests-last) es dueña de la cobertura
+/// completa del comportamiento open-set (varios vaults abiertos a la vez, migración, etc.).
 /// </summary>
 public class VaultsViewModelTests
 {
@@ -17,19 +23,24 @@ public class VaultsViewModelTests
     private sealed class Harness
     {
         public readonly List<string> Known;
-        public readonly List<string> Opened  = new();
+
+        // Mimics FileService.VaultRoots: mutated in place by the injected openRoot/closeRoot
+        // delegates below, so IsOpen recomputes live instead of a ctor-time snapshot.
+        public readonly List<string> OpenRoots;
         public int                   Persisted;
         public string?               NextPick;
         public VaultsViewModel       Vm;
 
-        public Harness(string? active = null, params string[] initial)
+        public Harness(string[]? open = null, params string[] initial)
         {
-            Known = new List<string>(initial);
+            Known     = new List<string>(initial);
+            OpenRoots = new List<string>(open ?? Array.Empty<string>());
             Vm = new VaultsViewModel(
                 knownPaths: Known,
-                activePath: active,
+                openPaths:  () => OpenRoots,
                 pickFolder: () => NextPick,
-                openVault:  p => Opened.Add(p),
+                openRoot:   p => { if (!OpenRoots.Contains(p)) OpenRoots.Add(p); },
+                closeRoot:  p => OpenRoots.Remove(p),
                 persist:    () => Persisted++);
         }
     }
@@ -56,12 +67,12 @@ public class VaultsViewModelTests
     }
 
     [Fact]
-    public void Active_vault_is_flagged_case_insensitively()
+    public void Open_vault_is_flagged_case_insensitively()
     {
-        var h = new Harness(@"c:\vaults\work", @"C:\Vaults\Work", @"C:\Vaults\Personal");
+        var h = new Harness(new[] { @"c:\vaults\work" }, @"C:\Vaults\Work", @"C:\Vaults\Personal");
 
-        Assert.True(h.Vm.Vaults[0].IsActive);
-        Assert.False(h.Vm.Vaults[1].IsActive);
+        Assert.True(h.Vm.Vaults[0].IsOpen);
+        Assert.False(h.Vm.Vaults[1].IsOpen);
     }
 
     [Fact]
@@ -84,12 +95,11 @@ public class VaultsViewModelTests
 
         Assert.Contains(@"C:\Vaults\New", h.Known);
         Assert.Equal(1, h.Persisted);
-        Assert.Equal(new[] { @"C:\Vaults\New" }, h.Opened);
-        Assert.Equal(@"C:\Vaults\New", h.Vm.ActivePath);
+        Assert.Equal(new[] { @"C:\Vaults\New" }, h.OpenRoots);
     }
 
     [Fact]
-    public void AddVault_marks_the_new_vault_active_in_the_list()
+    public void AddVault_marks_the_new_vault_open_in_the_list()
     {
         var h = new Harness();
         h.NextPick = @"C:\Vaults\New";
@@ -97,7 +107,7 @@ public class VaultsViewModelTests
         h.Vm.AddVaultCommand.Execute(null);
 
         Assert.Single(h.Vm.Vaults);
-        Assert.True(h.Vm.Vaults[0].IsActive);
+        Assert.True(h.Vm.Vaults[0].IsOpen);
     }
 
     [Fact]
@@ -109,7 +119,7 @@ public class VaultsViewModelTests
         h.Vm.AddVaultCommand.Execute(null);
 
         Assert.Empty(h.Known);
-        Assert.Empty(h.Opened);
+        Assert.Empty(h.OpenRoots);
         Assert.Equal(0, h.Persisted);
     }
 
@@ -123,40 +133,87 @@ public class VaultsViewModelTests
 
         Assert.Single(h.Known);
         Assert.Equal(0, h.Persisted);   // nothing new to persist
-        Assert.Equal(new[] { @"c:\vaults\work" }, h.Opened); // but it still switches to it
+        Assert.Equal(new[] { @"c:\vaults\work" }, h.OpenRoots); // but it still opens it
     }
 
-    // ─── Open (switch to an existing vault) ───────────────────────────────────
+    // ─── ToggleOpen (open-set: several vaults open at once) ────────────────────
 
     [Fact]
-    public void OpenVault_switches_the_active_vault()
+    public void ToggleOpen_opens_a_closed_vault_without_closing_others()
     {
-        var h = new Harness(@"C:\A", @"C:\A", @"C:\B");
+        var h = new Harness(new[] { @"C:\A" }, @"C:\A", @"C:\B");
 
-        h.Vm.OpenVaultCommand.Execute(@"C:\B");
+        h.Vm.ToggleOpenCommand.Execute(@"C:\B");
 
-        Assert.Equal(new[] { @"C:\B" }, h.Opened);
-        Assert.Equal(@"C:\B", h.Vm.ActivePath);
-        Assert.False(h.Vm.Vaults[0].IsActive);
-        Assert.True(h.Vm.Vaults[1].IsActive);
+        Assert.Contains(@"C:\B", h.OpenRoots);
+        Assert.Contains(@"C:\A", h.OpenRoots); // still open — no single-active swap
+        Assert.True(h.Vm.Vaults[0].IsOpen);
+        Assert.True(h.Vm.Vaults[1].IsOpen);
     }
 
     [Fact]
-    public void OpenVault_ignores_a_null_or_empty_path()
+    public void ToggleOpen_closes_an_open_vault()
     {
-        var h = new Harness(@"C:\A", @"C:\A");
+        var h = new Harness(new[] { @"C:\A", @"C:\B" }, @"C:\A", @"C:\B");
 
-        h.Vm.OpenVaultCommand.Execute(null);
+        h.Vm.ToggleOpenCommand.Execute(@"C:\B");
 
-        Assert.Empty(h.Opened);
+        Assert.DoesNotContain(@"C:\B", h.OpenRoots);
+        Assert.Contains(@"C:\A", h.OpenRoots);
+        Assert.True(h.Vm.Vaults[0].IsOpen);
+        Assert.False(h.Vm.Vaults[1].IsOpen);
+    }
+
+    [Fact]
+    public void ToggleOpen_ignores_a_null_or_empty_path()
+    {
+        var h = new Harness(new[] { @"C:\A" }, @"C:\A");
+
+        h.Vm.ToggleOpenCommand.Execute(null);
+
+        Assert.Equal(new[] { @"C:\A" }, h.OpenRoots);
+    }
+
+    [Fact]
+    public void ToggleOpen_twice_on_the_same_vault_opens_then_closes_it()
+    {
+        var h = new Harness(null, @"C:\A", @"C:\B");
+
+        h.Vm.ToggleOpenCommand.Execute(@"C:\A");
+        Assert.True(h.Vm.Vaults[0].IsOpen);
+        Assert.Contains(@"C:\A", h.OpenRoots);
+
+        h.Vm.ToggleOpenCommand.Execute(@"C:\A");
+        Assert.False(h.Vm.Vaults[0].IsOpen);
+        Assert.DoesNotContain(@"C:\A", h.OpenRoots);
+    }
+
+    [Fact]
+    public void ToggleOpen_supports_several_vaults_open_simultaneously()
+    {
+        var h = new Harness(null, @"C:\A", @"C:\B", @"C:\C");
+
+        h.Vm.ToggleOpenCommand.Execute(@"C:\A");
+        h.Vm.ToggleOpenCommand.Execute(@"C:\B");
+        h.Vm.ToggleOpenCommand.Execute(@"C:\C");
+
+        Assert.Equal(new[] { @"C:\A", @"C:\B", @"C:\C" }, h.OpenRoots);
+        Assert.All(h.Vm.Vaults, v => Assert.True(v.IsOpen));
+
+        // Closing one leaves the others open — no single-active swap anywhere in the flow.
+        h.Vm.ToggleOpenCommand.Execute(@"C:\B");
+        Assert.Equal(new[] { @"C:\A", @"C:\C" }, h.OpenRoots);
+        Assert.True(h.Vm.Vaults[0].IsOpen);
+        Assert.False(h.Vm.Vaults[1].IsOpen);
+        Assert.True(h.Vm.Vaults[2].IsOpen);
     }
 
     // ─── Remove ───────────────────────────────────────────────────────────────
 
     [Fact]
-    public void RemoveVault_drops_an_inactive_entry_and_persists()
+    public void RemoveVault_drops_a_closed_entry_and_persists()
     {
-        var h = new Harness(@"C:\A", @"C:\A", @"C:\B");
+        var h = new Harness(new[] { @"C:\A" }, @"C:\A", @"C:\B");
 
         h.Vm.RemoveVaultCommand.Execute(@"C:\B");
 
@@ -166,9 +223,9 @@ public class VaultsViewModelTests
     }
 
     [Fact]
-    public void RemoveVault_refuses_to_remove_the_active_vault()
+    public void RemoveVault_refuses_to_remove_an_open_vault()
     {
-        var h = new Harness(@"C:\A", @"C:\A", @"C:\B");
+        var h = new Harness(new[] { @"C:\A" }, @"C:\A", @"C:\B");
 
         h.Vm.RemoveVaultCommand.Execute(@"C:\A");
 
