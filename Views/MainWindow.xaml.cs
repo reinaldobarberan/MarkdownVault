@@ -527,6 +527,13 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    /// <summary>Opens the About window (author + application version).</summary>
+    private void About_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new AboutWindow { Owner = this };
+        window.ShowDialog();
+    }
+
     // ─── Export to PNG ───────────────────────────────────────────────────────
 
     /// <summary>

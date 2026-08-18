@@ -1,0 +1,66 @@
+<Project>
+
+  <!--
+    ══════════════════════════════════════════════════════════════════════════
+      IDENTIDAD Y VERSIÓN DE MARKDOWNVAULT
+      Importado por MarkdownVault.csproj. Es el ÚNICO lugar donde se define
+      quién firma la app y qué versión reporta. La ventana "Acerca de" no
+      tiene ningún número escrito a mano: lee todo esto desde el ensamblado.
+    ══════════════════════════════════════════════════════════════════════════
+  -->
+
+  <!-- ── 1. PARTE MANUAL ───────────────────────────────────────────────────
+       Esto lo subís VOS, a conciencia, cuando el cambio lo amerite (SemVer):
+         MAYOR . MENOR . PARCHE
+           │       │       └─ arreglo de bug, sin cambios de comportamiento
+           │       └───────── funcionalidad nueva compatible hacia atrás
+           └───────────────── cambio que rompe lo anterior
+       Ninguna máquina puede decidir esto por vos: es una afirmación sobre el
+       impacto del cambio, no un contador. -->
+  <PropertyGroup>
+    <VersionPrefix>1.0.0</VersionPrefix>
+  </PropertyGroup>
+
+  <!-- ── 2. PARTE AUTOMÁTICA ───────────────────────────────────────────────
+       Se calcula sola en CADA compilada, en el momento en que MSBuild evalúa
+       este archivo. No se guarda en ningún lado, así que ningún archivo del
+       proyecto se modifica solo. -->
+  <PropertyGroup>
+    <!-- PRECISIÓN: fecha, sin hora. Es deliberado y tiene un motivo concreto.
+         Cada vez que este sello cambia, MSBuild regenera el AssemblyInfo y el
+         proyecto recompila entero, perdiendo la compilación incremental. Con
+         precisión de minutos eso pasaba en CADA compilada; con precisión de
+         día pasa una sola vez por jornada y el resto del día compilás rápido.
+         Si algún día necesitás distinguir dos compilados del mismo día,
+         agregá HH:mm acá (y HHmm en la compacta) asumiendo ese costo. -->
+    <!-- Legible para humanos: es lo que muestra la ventana "Acerca de". -->
+    <BuildStamp>$([System.DateTime]::Now.ToString('yyyy-MM-dd'))</BuildStamp>
+    <!-- Compacta: metadata SemVer, sin espacios ni ':' (el '+' no altera la
+         versión, solo la anota — 1.0.0+build.X sigue SIENDO la 1.0.0). -->
+    <BuildStampCompact>$([System.DateTime]::Now.ToString('yyyyMMdd'))</BuildStampCompact>
+    <BuildYear>$([System.DateTime]::Now.ToString('yyyy'))</BuildYear>
+  </PropertyGroup>
+
+  <!-- ── 3. QUÉ TERMINA DENTRO DEL .EXE ────────────────────────────────────
+       AssemblyVersion / FileVersion quedan CLAVADOS en la parte manual: son
+       la identidad con la que .NET resuelve el ensamblado. Si se movieran en
+       cada compilada, cualquier cosa que dependa de esa identidad se rompería
+       sin motivo. El sello de compilado viaja aparte, donde no hace daño. -->
+  <PropertyGroup>
+    <Product>MarkdownVault</Product>
+    <Authors>Reinaldo Barberán</Authors>
+    <Company>Reinaldo Barberán</Company>
+    <Copyright>© $(BuildYear) Reinaldo Barberán</Copyright>
+    <InformationalVersion>$(VersionPrefix)+build.$(BuildStampCompact)</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- El sello legible, como atributo propio del ensamblado. Se lee en runtime
+       sin parsear strings: AssemblyMetadataAttribute con clave "BuildStamp". -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildStamp</_Parameter1>
+      <_Parameter2>$(BuildStamp)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
