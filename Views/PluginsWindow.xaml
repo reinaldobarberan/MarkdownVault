@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Complementos"
-        Height="500" Width="580"
-        MinHeight="320" MinWidth="440"
+        Height="620" Width="700"
+        MinHeight="360" MinWidth="520"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
+        Closing="Window_Closing"
         Background="{DynamicResource WindowBackground}"
         Foreground="{DynamicResource Foreground}">
 
@@ -15,6 +16,35 @@
             <Setter Property="MinWidth" Value="80"/>
             <Setter Property="Margin"   Value="4,0,0,0"/>
             <Setter Property="Cursor"   Value="Hand"/>
+        </Style>
+
+        <!-- Cajas de texto de las listas editables. No hay estilo implícito de TextBox
+             en los diccionarios de tema, así que sin esto salen blancas sobre fondo
+             oscuro (mismo criterio explícito que LinkPickerDialog). -->
+        <Style x:Key="ListEditBox" TargetType="TextBox">
+            <Setter Property="Background"   Value="{DynamicResource EditorBackground}"/>
+            <Setter Property="Foreground"   Value="{DynamicResource Foreground}"/>
+            <Setter Property="BorderBrush"  Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="CaretBrush"   Value="{DynamicResource Foreground}"/>
+            <Setter Property="Padding"      Value="4,3"/>
+            <Setter Property="FontSize"     Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Botón chico de fila (borrar). Anula el MinWidth 80 del estilo implícito. -->
+        <!-- Se apoya en ToolbarButtonStyle, que el proyecto YA tiene resuelto en los DOS
+             temas: plantilla propia, fondo transparente, color del tema y estado al pasar
+             el mouse. La versión anterior redefinía esto a mano y se olvidaba del
+             Background, así que el botón caía al gris por defecto de Windows y se veía
+             como un recuadro blanco sobre el tema oscuro.
+             BasedOn va con StaticResource porque WPF no admite DynamicResource ahí; es el
+             mismo patrón que usa EditorView.xaml, y funciona porque la plantilla es
+             idéntica en ambos temas y los colores de adentro sí son DynamicResource. -->
+        <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+            <Setter Property="Margin"     Value="4,0,0,0"/>
+            <Setter Property="MinWidth"   Value="26"/>
+            <Setter Property="Height"     Value="24"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
         </Style>
     </Window.Resources>
 
@@ -91,9 +121,198 @@
                                                        Margin="0,4,8,0" FontSize="11"
                                                        Foreground="#E06C75"
                                                        Visibility="{Binding IsFailed, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                            <!-- ── Listas editables contribuidas por el plugin (SDK 1.4.0) ──
+                                                 El plugin DECLARA los datos (PluginListSetting); todo lo que se
+                                                 ve acá lo dibuja el host. Por eso un plugin puede tener
+                                                 configuración editable sin declarar una Window propia — que es
+                                                 lo que le costaría la descarga en caliente. -->
+                                            <ItemsControl ItemsSource="{Binding ListSettings}"
+                                                          Margin="0,8,8,0"
+                                                          Visibility="{Binding HasListSettings, Converter={StaticResource BoolToVisConverter}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                                                  Margin="0,0,0,6"
+                                                                  Foreground="{DynamicResource Foreground}">
+                                                            <Expander.Header>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               FontSize="12" FontWeight="SemiBold"
+                                                                               Foreground="{DynamicResource Foreground}"/>
+                                                                    <TextBlock Text="{Binding HeaderBadge}"
+                                                                               Margin="8,0,0,0" FontSize="11"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{DynamicResource SubtleForeground}"/>
+                                                                    <TextBlock Text="· sin guardar"
+                                                                               Margin="8,0,0,0" FontSize="11"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="#E5C07B"
+                                                                               Visibility="{Binding IsDirty, Converter={StaticResource BoolToVisConverter}}"/>
+                                                                </StackPanel>
+                                                            </Expander.Header>
+
+                                                            <Border Margin="0,6,0,0" Padding="10"
+                                                                    CornerRadius="4"
+                                                                    Background="{DynamicResource PanelBackground}"
+                                                                    BorderBrush="{DynamicResource BorderBrush}"
+                                                                    BorderThickness="1">
+                                                                <StackPanel>
+
+                                                                    <!-- Para qué sirve la lista (lo dice el plugin) -->
+                                                                    <TextBlock Text="{Binding Description}"
+                                                                               TextWrapping="Wrap" FontSize="11"
+                                                                               Margin="0,0,0,8"
+                                                                               Foreground="{DynamicResource SubtleForeground}"
+                                                                               Visibility="{Binding HasDescription, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                                                    <!-- Filtro de búsqueda: con decenas de entradas, encontrar una a ojo deja de ser viable -->
+                                                                    <Grid Margin="0,0,0,6">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Grid.Column="0" Text="&#xE721;"
+                                                                                   FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                                                   VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                                   Foreground="{DynamicResource SubtleForeground}"/>
+                                                                        <TextBox Grid.Column="1"
+                                                                                 Style="{StaticResource ListEditBox}"
+                                                                                 ToolTip="Buscar en la lista"
+                                                                                 Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                    </Grid>
+
+                                                                    <!-- Encabezados de columna. DockPanel y no Grid a propósito: un hijo
+                                                                         Collapsed no ocupa lugar en un DockPanel, así que la lista de UNA
+                                                                         columna no deja media fila vacía esperando a la segunda. -->
+                                                                    <DockPanel Margin="0,0,30,2">
+                                                                        <TextBlock DockPanel.Dock="Right" Width="180" Margin="6,0,0,0"
+                                                                                   Text="{Binding ValueLabel}" FontSize="10"
+                                                                                   Foreground="{DynamicResource SubtleForeground}"
+                                                                                   Visibility="{Binding HasValueColumn, Converter={StaticResource BoolToVisConverter}}"/>
+                                                                        <TextBlock Text="{Binding KeyLabel}" FontSize="10"
+                                                                                   Foreground="{DynamicResource SubtleForeground}"/>
+                                                                    </DockPanel>
+
+                                                                    <!-- Las entradas -->
+                                                                    <TextBlock Text="{Binding EmptyText}"
+                                                                               FontSize="11" Margin="0,6,0,6"
+                                                                               Foreground="{DynamicResource SubtleForeground}"
+                                                                               Visibility="{Binding HasVisibleEntries, Converter={StaticResource InverseBoolToVisConverter}}"/>
+
+                                                                    <ScrollViewer MaxHeight="200"
+                                                                                  VerticalScrollBarVisibility="Auto"
+                                                                                  Visibility="{Binding HasVisibleEntries, Converter={StaticResource BoolToVisConverter}}">
+                                                                        <ItemsControl ItemsSource="{Binding Visible}">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <StackPanel Margin="0,0,0,3">
+                                                                                        <DockPanel>
+                                                                                            <Button DockPanel.Dock="Right"
+                                                                                                    Style="{StaticResource RowButton}"
+                                                                                                    Width="26"
+                                                                                                    Content="&#xE74D;"
+                                                                                                    ToolTip="{Binding Key, StringFormat='Borrar «{0}»'}"
+                                                                                                    Command="{Binding RemoveCommand}"/>
+
+                                                                                            <TextBox DockPanel.Dock="Right"
+                                                                                                     Width="180" Margin="6,0,0,0"
+                                                                                                     Style="{StaticResource ListEditBox}"
+                                                                                                     Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                     Visibility="{Binding HasValueColumn, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                                                                            <TextBox Style="{StaticResource ListEditBox}"
+                                                                                                     Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                        </DockPanel>
+
+                                                                                        <TextBlock Text="{Binding Problem}"
+                                                                                                   TextWrapping="Wrap"
+                                                                                                   FontSize="10" Margin="2,1,0,2"
+                                                                                                   Foreground="#E06C75"
+                                                                                                   Visibility="{Binding HasProblem, Converter={StaticResource BoolToVisConverter}}"/>
+                                                                                    </StackPanel>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+                                                                    </ScrollViewer>
+
+                                                                    <!-- Alta: Enter agrega y deja el foco donde está, para encadenar una tras otra -->
+                                                                    <DockPanel Margin="0,8,0,0">
+                                                                        <Button DockPanel.Dock="Right"
+                                                                                Style="{StaticResource RowButton}"
+                                                                                FontFamily="Segoe UI" FontSize="12"
+                                                                                Content="Agregar"
+                                                                                ToolTip="También podés apretar Enter"
+                                                                                MinWidth="60"
+                                                                                Command="{Binding AddNewCommand}"/>
+
+                                                                        <TextBox DockPanel.Dock="Right"
+                                                                                 Width="180" Margin="6,0,0,0"
+                                                                                 Style="{StaticResource ListEditBox}"
+                                                                                 Text="{Binding NewValue, UpdateSourceTrigger=PropertyChanged}"
+                                                                                 Visibility="{Binding HasValueColumn, Converter={StaticResource BoolToVisConverter}}">
+                                                                            <TextBox.InputBindings>
+                                                                                <KeyBinding Key="Enter" Command="{Binding AddNewCommand}"/>
+                                                                            </TextBox.InputBindings>
+                                                                        </TextBox>
+
+                                                                        <TextBox Style="{StaticResource ListEditBox}"
+                                                                                 ToolTip="Escribí y apretá Enter para agregar"
+                                                                                 Text="{Binding NewKey, UpdateSourceTrigger=PropertyChanged}">
+                                                                            <TextBox.InputBindings>
+                                                                                <KeyBinding Key="Enter" Command="{Binding AddNewCommand}"/>
+                                                                            </TextBox.InputBindings>
+                                                                        </TextBox>
+                                                                    </DockPanel>
+
+                                                                    <TextBlock Text="{Binding NewEntryProblem}"
+                                                                               TextWrapping="Wrap"
+                                                                               FontSize="10" Margin="2,3,0,0"
+                                                                               Foreground="#E06C75"
+                                                                               Visibility="{Binding HasNewEntryProblem, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                                                    <!-- Lo que el PLUGIN tiene para decir de su propia lista -->
+                                                                    <TextBlock Text="{Binding DescribeText}"
+                                                                               TextWrapping="Wrap"
+                                                                               FontSize="11" Margin="0,8,0,0"
+                                                                               Foreground="{DynamicResource SubtleForeground}"
+                                                                               Visibility="{Binding HasDescribeText, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                                                    <!-- Guardado explícito -->
+                                                                    <Grid Margin="0,8,0,0">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   Text="{Binding StatusText}"
+                                                                                   TextWrapping="Wrap"
+                                                                                   FontSize="11" VerticalAlignment="Center"
+                                                                                   Margin="0,0,8,0"
+                                                                                   Foreground="{DynamicResource SubtleForeground}"
+                                                                                   Visibility="{Binding HasStatusText, Converter={StaticResource BoolToVisConverter}}"/>
+
+                                                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                                            <Button Content="Descartar"
+                                                                                    FontSize="11" Padding="10,4" MinWidth="70"
+                                                                                    Command="{Binding DiscardCommand}"
+                                                                                    IsEnabled="{Binding IsDirty}"/>
+                                                                            <Button Content="Guardar"
+                                                                                    FontSize="11" Padding="10,4" MinWidth="70"
+                                                                                    Command="{Binding SaveCommand}"
+                                                                                    IsEnabled="{Binding CanSave}"/>
+                                                                        </StackPanel>
+                                                                    </Grid>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </Expander>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
 
-                                        <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                        <CheckBox Grid.Column="1" VerticalAlignment="Top" Margin="0,2,0,0"
                                                   Content="Activado"
                                                   Cursor="Hand"
                                                   Foreground="{DynamicResource Foreground}"

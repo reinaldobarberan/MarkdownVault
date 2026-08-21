@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MarkdownVault.Models;
+using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
 
@@ -135,6 +136,22 @@ public partial class EditorGroupViewModel : ObservableObject
 
     public bool HasFile => !string.IsNullOrEmpty(CurrentFilePath);
 
+    /// <summary>
+    /// True cuando este panel tiene una pestaña abierta. Es la ÚNICA señal válida de «hay
+    /// documento sobre el que editar»: <see cref="HasFile"/> mira <see cref="CurrentFilePath"/>,
+    /// que <see cref="SaveAsAsync"/> deja seteado tras un Guardar como, y eso NO implica que
+    /// exista una <see cref="OpenTab"/> detrás donde persistir lo que se escriba.
+    /// </summary>
+    public bool HasOpenDocument => ActiveTab is not null;
+
+    /// <summary>
+    /// Sin documento no se edita. La vista ata el área de texto a esta propiedad porque escribir
+    /// en el vacío no guardaba en ningún lado: <see cref="OnContentChanged"/> solo persiste en
+    /// <see cref="ActiveTab"/>, así que el texto vivía únicamente en el control y la primera
+    /// apertura de archivo lo pisaba sin aviso.
+    /// </summary>
+    public bool IsEditorReadOnly => !HasOpenDocument;
+
     // ─── Content change pipeline ─────────────────────────────────────────────
 
     partial void OnContentChanged(string value)
@@ -173,6 +190,9 @@ public partial class EditorGroupViewModel : ObservableObject
 
     partial void OnActiveTabChanged(OpenTab? value)
     {
+        // Antes que nada: abrir o cerrar la última pestaña cambia si el panel es editable.
+        NotifyDocumentGates();
+
         if (value is null)
         {
             _isSwitchingTab = true;
@@ -195,6 +215,40 @@ public partial class EditorGroupViewModel : ObservableObject
         RefreshPreview();
         OnPropertyChanged(nameof(Title));
         ActiveTabChanged?.Invoke(value);
+    }
+
+    /// <summary>
+    /// Reevalúa todo lo que depende de «hay documento abierto»: las dos propiedades que mira la
+    /// vista y el <c>CanExecute</c> de cada comando que escribe en el editor.
+    ///
+    /// Los comandos hay que avisarlos UNO POR UNO a propósito: <c>RelayCommand</c> no observa
+    /// nada, solo vuelve a consultar su <c>CanExecute</c> cuando alguien le levanta la mano. Un
+    /// comando que falte acá queda con el botón habilitado sobre un panel vacío, que es
+    /// exactamente el agujero que este cambio cierra.
+    /// </summary>
+    private void NotifyDocumentGates()
+    {
+        OnPropertyChanged(nameof(HasOpenDocument));
+        OnPropertyChanged(nameof(IsEditorReadOnly));
+
+        SaveCommand.NotifyCanExecuteChanged();
+        SaveAsCommand.NotifyCanExecuteChanged();
+
+        InsertBoldCommand.NotifyCanExecuteChanged();
+        InsertItalicCommand.NotifyCanExecuteChanged();
+        InsertCodeCommand.NotifyCanExecuteChanged();
+        InsertCodeBlockCommand.NotifyCanExecuteChanged();
+        InsertHeading1Command.NotifyCanExecuteChanged();
+        InsertHeading2Command.NotifyCanExecuteChanged();
+        InsertHeading3Command.NotifyCanExecuteChanged();
+        InsertBulletListCommand.NotifyCanExecuteChanged();
+        InsertNumberedListCommand.NotifyCanExecuteChanged();
+        InsertLinkCommand.NotifyCanExecuteChanged();
+        InsertInternalLinkCommand.NotifyCanExecuteChanged();
+        InsertImageCommand.NotifyCanExecuteChanged();
+
+        foreach (var item in PluginToolbarItems)
+            item.NotifyCanExecuteChanged();
     }
 
     // ─── File operations ─────────────────────────────────────────────────────
@@ -426,8 +480,11 @@ public partial class EditorGroupViewModel : ObservableObject
         SwitchToTab(OpenTabs[prev]);
     }
 
-    // Always enabled — falls back to Save As when no file is open.
-    [RelayCommand]
+    // Requiere pestaña abierta. Antes estaba SIEMPRE habilitado y sin archivo caía en
+    // SaveAsAsync, que escribía el contenido huérfano del control y seteaba CurrentFilePath
+    // sin crear la pestaña: quedaba HasFile == true con ActiveTab == null, o sea la barra de
+    // pestañas vacía y el ViewModel convencido de tener un archivo abierto.
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private async Task SaveAsync()
     {
         if (string.IsNullOrEmpty(CurrentFilePath))
@@ -449,7 +506,7 @@ public partial class EditorGroupViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private async Task SaveAsAsync()
     {
         var suggestedFileName = HasFile ? Path.GetFileName(CurrentFilePath) : "SinTítulo.md";
@@ -477,10 +534,115 @@ public partial class EditorGroupViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Guardado automático: persiste TODAS las pestañas sucias de este panel, no solo la activa.
+    ///
+    /// Antes era <c>if (IsDirty &amp;&amp; HasFile) await SaveAsync()</c>, y <see cref="SaveAsync"/>
+    /// escribe <see cref="CurrentFilePath"/> con <see cref="Content"/>: el documento de adelante y
+    /// nada más. Eso alcanzaba mientras todo el texto entraba por el teclado, que siempre va a la
+    /// pestaña activa. Desde que las escrituras de plugin se fijan a la pestaña donde ARRANCÓ la
+    /// acción (<see cref="PinnedEditorContext"/>), el dictado puede estar llenando una pestaña de
+    /// segundo plano —una frase por pausa, durante minutos— y ese texto quedaba marcado como
+    /// modificado pero solo en memoria: ni un byte tocaba el disco.
+    /// </summary>
     private async Task AutoSaveAsync()
     {
-        if (IsDirty && HasFile)
-            await SaveAsync();
+        await SaveDirtyTabsAsync();
+    }
+
+    /// <summary>
+    /// Escribe a disco todas las pestañas sucias del panel y devuelve cuántas guardó.
+    /// La fuente del texto de cada una la decide <see cref="DirtyTabScanner"/>: activa ⇒ contenido
+    /// VIVO del panel, en segundo plano ⇒ su propio <see cref="OpenTab.Content"/>. Confundirlas no
+    /// sería "no guardar" sino guardar texto viejo encima del bueno.
+    /// </summary>
+    internal async Task<int> SaveDirtyTabsAsync()
+    {
+        var pending = DirtyTabScanner.Scan(OpenTabs, ActiveTab, Content);
+        if (pending.Count == 0) return 0;
+
+        var saved  = 0;
+        var failed = new List<string>();
+
+        foreach (var item in pending)
+        {
+            try
+            {
+                await _fileService.WriteFileAsync(item.FilePath, item.Content);
+                MarkSaved(item);
+                saved++;
+            }
+            catch (Exception ex)
+            {
+                failed.Add($"{item.Tab.FileName}: {ex.Message}");
+            }
+        }
+
+        ReportSaveOutcome(saved, failed);
+        return saved;
+    }
+
+    /// <summary>
+    /// Variante SÍNCRONA de <see cref="SaveDirtyTabsAsync"/> para el cierre de la ventana.
+    /// Devuelve los fallos (vacío = todo persistido). Ver <see cref="FileService.WriteFile"/> para
+    /// por qué acá no se puede bloquear sobre la versión async.
+    /// </summary>
+    internal IReadOnlyList<string> SaveDirtyTabsBlocking()
+    {
+        var pending = DirtyTabScanner.Scan(OpenTabs, ActiveTab, Content);
+        var failed  = new List<string>();
+
+        foreach (var item in pending)
+        {
+            try
+            {
+                _fileService.WriteFile(item.FilePath, item.Content);
+                MarkSaved(item);
+            }
+            catch (Exception ex)
+            {
+                failed.Add($"{item.Tab.FileName}: {ex.Message}");
+            }
+        }
+
+        return failed;
+    }
+
+    /// <summary>
+    /// Limpia el estado sucio tras una escritura exitosa, y SOLO si el texto no cambió mientras se
+    /// escribía (ver <see cref="DirtyTabScanner.CanClearDirty"/>).
+    ///
+    /// La bandera del PANEL (<see cref="IsDirty"/>) es la de la pestaña activa: solo se baja cuando
+    /// fue ESA la que se guardó, si no el título diría "guardado" con la pestaña de adelante
+    /// todavía modificada.
+    /// </summary>
+    private void MarkSaved(PendingTabSave item)
+    {
+        var current = item.Source == TabContentSource.LiveEditor ? Content : item.Tab.Content;
+        if (!DirtyTabScanner.CanClearDirty(current, item.Content)) return;
+
+        item.Tab.IsDirty = false;
+        if (item.Source == TabContentSource.LiveEditor) IsDirty = false;
+    }
+
+    /// <summary>
+    /// Un solo mensaje por pasada, no uno por pestaña: el guardado automático corre cada 30 s y
+    /// un modal por archivo fallido lo convertiría en una metralleta de diálogos.
+    /// </summary>
+    private void ReportSaveOutcome(int saved, IReadOnlyList<string> failed)
+    {
+        if (failed.Count > 0)
+        {
+            _dialogService.ShowError(
+                "No se pudieron guardar estos documentos:\n\n" + string.Join("\n", failed),
+                "Error al guardar");
+        }
+
+        if (saved == 0) return;
+
+        StatusSink?.Invoke(saved == 1
+            ? $"Guardado  {DateTime.Now:HH:mm:ss}"
+            : $"Guardados {saved} documentos  {DateTime.Now:HH:mm:ss}");
     }
 
     // ─── Auto-save control ───────────────────────────────────────────────────
@@ -571,45 +733,79 @@ public partial class EditorGroupViewModel : ObservableObject
     /// <summary>Items de barra aportados por plugins habilitados (botones y menús).</summary>
     public ObservableCollection<PluginToolbarItemViewModel> PluginToolbarItems { get; } = new();
 
-    private EditorContextAdapter? _pluginEditor;
-
     private void RebuildPluginToolbar()
     {
         PluginToolbarItems.Clear();
-        var editor = _pluginEditor ??= new EditorContextAdapter(this);
 
+        // Se pasa la FÁBRICA, no un contexto ya construido: el contexto nace en el clic para
+        // poder fijar la pestaña activa de ese instante (ver CreatePluginEditorContext).
+        // El portón es el mismo que el de la barra propia: sin pestaña abierta, un comando de
+        // plugin no tiene destino y su escritura degrada (PinnedEditorContext → NoDocument).
+        // Se pasa la FUNCIÓN, no el valor: la barra se construye una vez y el estado cambia
+        // muchas veces después.
         foreach (var group in _registry.CommandGroups)
-            PluginToolbarItems.Add(PluginToolbarItemViewModel.Group(group, editor));
+            PluginToolbarItems.Add(PluginToolbarItemViewModel.Group(group, CreatePluginEditorContext, () => HasOpenDocument));
         foreach (var command in _registry.Commands)
-            PluginToolbarItems.Add(PluginToolbarItemViewModel.Single(command, editor));
+            PluginToolbarItems.Add(PluginToolbarItemViewModel.Single(command, CreatePluginEditorContext, () => HasOpenDocument));
     }
 
-    // Puentes que usa EditorContextAdapter (traducen a los eventos que maneja la View).
+    /// <summary>
+    /// Crea el <see cref="IEditorContext"/> de UNA invocación de comando, fijando la pestaña
+    /// activa AHORA. Antes había un único adapter cacheado por panel y compartido por todos
+    /// los items de la barra: un plugin que retenía el contexto y escribía más tarde (dictado
+    /// en vivo, transcripción de archivo) insertaba en la pestaña que estuviera activa EN ESE
+    /// MOMENTO, no en la que el usuario tenía delante al apretar el botón. Ver
+    /// <see cref="PinnedEditorContext"/> para el enrutado completo.
+    /// </summary>
+    internal IEditorContext CreatePluginEditorContext() => new PinnedEditorContext(this, ActiveTab);
+
+    /// <summary>
+    /// Workbench-owned lookup: qué grupo tiene abierta ESTA pestaña ahora mismo. Hace falta
+    /// porque una <see cref="OpenTab"/> puede MIGRAR de panel («Mover al otro panel», salir del
+    /// split) sin cerrarse — buscarla solo en este grupo la daría por cerrada y degradaría una
+    /// operación que en realidad sigue siendo perfectamente válida.
+    /// Null en tests → el grupo se comporta standalone (modo panel único), misma convención que
+    /// <see cref="RedirectIfOwnedElsewhere"/>.
+    /// </summary>
+    internal Func<OpenTab, EditorGroupViewModel?>? OwnerOfTab { get; set; }
+
+    /// <summary>Grupo que tiene abierta <paramref name="tab"/>, o null si ya no está abierta en ninguno.</summary>
+    internal EditorGroupViewModel? ResolveOwner(OpenTab tab)
+    {
+        if (OwnerOfTab is { } lookup) return lookup(tab);
+        return OpenTabs.Contains(tab) ? this : null;
+    }
+
+    // Puentes que usa PinnedEditorContext (traducen a los eventos que maneja la View).
     internal string PluginGetSelectedText()               => SelectedTextProvider?.Invoke() ?? string.Empty;
     internal void   PluginInsertAtCaret(string text)      => SnippetRequested?.Invoke(text);
     internal void   PluginWrapSelection(string b, string a) => InsertionRequested?.Invoke(b, a);
     internal void   PluginReplaceSelection(string text)   => ReplaceSelectionRequested?.Invoke(text);
 
-    [RelayCommand] private void InsertBold()    => InsertionRequested?.Invoke("**", "**");
-    [RelayCommand] private void InsertItalic()  => InsertionRequested?.Invoke("*", "*");
-    [RelayCommand] private void InsertCode()    => InsertionRequested?.Invoke("`", "`");
+    // TODOS los comandos de inserción exigen documento abierto. Poner el área de texto en
+    // solo-lectura NO alcanza: IsReadOnly de AvalonEdit frena el tipeo del usuario, pero estos
+    // comandos terminan en Document.Insert desde la vista, que pasa por encima del provider de
+    // solo-lectura y volvería a escribir en el vacío.
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertBold()    => InsertionRequested?.Invoke("**", "**");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertItalic()  => InsertionRequested?.Invoke("*", "*");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertCode()    => InsertionRequested?.Invoke("`", "`");
 
     /// <summary>Inserts a fenced code block with the given language tag (e.g. "csharp", "sql").</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private void InsertCodeBlock(string language) =>
         InsertionRequested?.Invoke($"```{language}\n", "\n```");
 
     // NOTE: "Insertar ejemplo Mermaid" se migró al plugin Mermaid (aporta su propio
     // dropdown vía PluginCommandGroup). Al desactivar el plugin, su menú desaparece.
 
-    [RelayCommand] private void InsertHeading1() => InsertionRequested?.Invoke("# ", "");
-    [RelayCommand] private void InsertHeading2() => InsertionRequested?.Invoke("## ", "");
-    [RelayCommand] private void InsertHeading3() => InsertionRequested?.Invoke("### ", "");
-    [RelayCommand] private void InsertBulletList()   => InsertionRequested?.Invoke("- ", "");
-    [RelayCommand] private void InsertNumberedList() => InsertionRequested?.Invoke("1. ", "");
-    [RelayCommand] private void InsertLink()    => InsertionRequested?.Invoke("[", "](url)");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertHeading1() => InsertionRequested?.Invoke("# ", "");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertHeading2() => InsertionRequested?.Invoke("## ", "");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertHeading3() => InsertionRequested?.Invoke("### ", "");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertBulletList()   => InsertionRequested?.Invoke("- ", "");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertNumberedList() => InsertionRequested?.Invoke("1. ", "");
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))] private void InsertLink()    => InsertionRequested?.Invoke("[", "](url)");
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private void InsertInternalLink()
     {
         // Vault-scoped resolution: the link picker only offers notes from THIS tab's
@@ -633,7 +829,7 @@ public partial class EditorGroupViewModel : ObservableObject
         InsertionRequested?.Invoke(markdown, "");
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private void InsertImage()
     {
         var imagePath = _dialogService.AskImagePath();
@@ -658,9 +854,22 @@ public partial class EditorGroupViewModel : ObservableObject
 
     // ─── Drag & drop ─────────────────────────────────────────────────────────
 
-    /// <summary>Handles image files dropped onto the editor.</summary>
+    /// <summary>
+    /// Handles image files dropped onto the editor.
+    ///
+    /// Soltar no pasa por ningún <c>CanExecute</c> —la vista llama a este método directo—, así
+    /// que el portón va acá: sin pestaña abierta la imagen se copiaría a <c>assets/</c> y su
+    /// Markdown se insertaría en un control que nadie va a guardar. Se avisa en vez de callar:
+    /// el usuario acaba de arrastrar un archivo y espera VER algo.
+    /// </summary>
     public void HandleDroppedFiles(string[] paths)
     {
+        if (!HasOpenDocument)
+        {
+            StatusSink?.Invoke("No hay ningún documento abierto: abrí o creá un archivo antes de soltar imágenes.");
+            return;
+        }
+
         var imageExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg" };
 

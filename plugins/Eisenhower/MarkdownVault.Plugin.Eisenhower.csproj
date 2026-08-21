@@ -11,6 +11,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- tests/ es un PROYECTO APARTE (MarkdownVault.Plugin.Eisenhower.Tests). Sin este
+         Remove, los globs por defecto del SDK se comen sus .cs y los compilan DENTRO
+         del plugin: el SDK no excluye subcarpetas por el solo hecho de tener un .csproj
+         propio. Resultado sin esto: el plugin no compila (no conoce Xunit) y, si lo
+         hiciera, se llevaría los tests al DLL que se publica. -->
+    <Compile          Remove="tests\**" />
+    <None             Remove="tests\**" />
+    <Content          Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Solo el contrato. Private=false → NO copiar el SDK.dll a la salida del plugin
          (lo provee el host; duplicarlo rompe la identidad de tipos). -->
     <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj">

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using MarkdownVault.Models;
+using MarkdownVault.Services;
 using MarkdownVault.ViewModels;
 
 namespace MarkdownVault.Views;
@@ -55,6 +56,15 @@ public partial class MainWindow : Window
 
         BindPreviewSource(_vm.FocusedGroup);
         _vm.PropertyChanged        += Vm_PropertyChanged;
+
+        // Superficie modal del chequeo de cambios sin guardar al cerrar. Mismo patrón que
+        // CompareViewFactory en App.xaml.cs: el VM decide QUÉ preguntar, la View pone la ventana.
+        _vm.UnsavedChangesPrompt = report =>
+        {
+            var dialog = new UnsavedChangesDialog(report) { Owner = this };
+            dialog.ShowDialog();
+            return dialog.Result;
+        };
 
         ApplyViewMode(_vm.ViewMode);
         ApplyExplorerVisibility(_vm.IsExplorerVisible);
@@ -496,7 +506,20 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object sender, CancelEventArgs e)
     {
-        _vm?.OnExit();
+        // El chequeo de cambios sin guardar va PRIMERO y antes de tocar nada más: si el usuario
+        // cancela el cierre, la aplicación tiene que quedar exactamente como estaba. Forzar el
+        // cierre de la ventana de búsqueda antes de preguntar la mataría igual aunque después
+        // no cerremos nada.
+        if (_vm is { } vm && vm.RequestExitCancelled())
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        // El formulario de búsqueda cancela su propio Closing para esconderse en vez de
+        // morir (ver FindReplaceWindow). Sin este cierre forzado quedaría una ventana
+        // escondida viva y, con ShutdownMode=OnLastWindowClose, el proceso no terminaría.
+        _findWindow?.ForceClose();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)
@@ -522,7 +545,7 @@ public partial class MainWindow : Window
         var window = new PluginsWindow
         {
             Owner       = this,
-            DataContext = new PluginsViewModel(App.PluginManager)
+            DataContext = new PluginsViewModel(App.PluginManager, App.PluginRegistry)
         };
         window.ShowDialog();
     }
@@ -532,6 +555,74 @@ public partial class MainWindow : Window
     {
         var window = new AboutWindow { Owner = this };
         window.ShowDialog();
+    }
+
+    // ─── Buscar / Reemplazar ─────────────────────────────────────────────────
+    // El ViewModel y la ventana se crean UNA vez y viven mientras viva el shell: así F3
+    // repite la última búsqueda con el formulario cerrado, y reabrirlo conserva el patrón
+    // y las opciones. La ventana no es modal — es "owned" por esta, así que flota encima
+    // pero el editor sigue editable (decisión de UX, ver AGENTS.md).
+
+    private FindReplaceViewModel? _findVm;
+    private FindReplaceWindow?    _findWindow;
+
+    private FindReplaceViewModel FindVm =>
+        _findVm ??= new FindReplaceViewModel(ResolveFindTarget);
+
+    /// <summary>
+    /// Panel de editor sobre el que debe operar la búsqueda: el que tiene el FOCO, no
+    /// "el editor". Con el editor dividido hay dos, y se re-resuelve en cada operación
+    /// para que cambiar de panel o de pestaña con el formulario abierto no lo deje
+    /// apuntando al documento equivocado.
+    /// </summary>
+    private IFindReplaceTarget? ResolveFindTarget()
+    {
+        var panel = FocusedEditorPanel();
+        if (!panel.HasOpenDocument) return null;
+        return panel;
+    }
+
+    private EditorView FocusedEditorPanel()
+    {
+        if (_vm is not null
+            && EditorPanelB.Visibility == Visibility.Visible
+            && ReferenceEquals(EditorPanelB.DataContext, _vm.FocusedGroup))
+        {
+            return EditorPanelB;
+        }
+
+        return EditorPanelA;
+    }
+
+    private void ShowFindWindow(bool showReplace)
+    {
+        if (_findWindow is null)
+        {
+            _findWindow = new FindReplaceWindow(FindVm) { Owner = this };
+            // Al esconderse, el foco vuelve al editor: si no, quedaría en la ventana
+            // principal sin cursor y habría que hacer clic en el texto para seguir.
+            _findWindow.Dismissed += () => FocusedEditorPanel().FocusEditor();
+        }
+
+        _findWindow.ShowFor(showReplace);
+    }
+
+    private void Find_Executed(object sender, ExecutedRoutedEventArgs e)    => ShowFindWindow(showReplace: false);
+
+    private void Replace_Executed(object sender, ExecutedRoutedEventArgs e) => ShowFindWindow(showReplace: true);
+
+    /// <summary>F3: repite la última búsqueda sin abrir nada. Si todavía no hay patrón,
+    /// abre el formulario en vez de no hacer nada en silencio.</summary>
+    private void FindNext_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (!FindVm.HasPattern) { ShowFindWindow(showReplace: false); return; }
+        FindVm.FindNextCommand.Execute(null);
+    }
+
+    private void FindPrevious_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (!FindVm.HasPattern) { ShowFindWindow(showReplace: false); return; }
+        FindVm.FindPreviousCommand.Execute(null);
     }
 
     // ─── Export to PNG ───────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ using System.Linq;
 using MarkdownVault.Plugin.Eisenhower;
 using Xunit;
 
-namespace MarkdownVault.Tests;
+namespace MarkdownVault.Plugin.Eisenhower.Tests;
 
 public class EisenhowerTests
 {

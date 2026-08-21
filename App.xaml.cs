@@ -22,6 +22,14 @@ public partial class App : Application
     public static PluginRegistry PluginRegistry { get; private set; } = null!;
     public static PluginManager  PluginManager  { get; private set; } = null!;
 
+    /// <summary>
+    /// Multiplexor de la barra de progreso de plugins (SDK 1.3.0) y sumidero del
+    /// log de plugins a archivo. Se exponen para diagnóstico (la ruta del log) y
+    /// porque el ciclo de vida es el de la app.
+    /// </summary>
+    public static PluginProgressCoordinator PluginProgress { get; private set; } = null!;
+    public static FilePluginLogSink         PluginLog      { get; private set; } = null!;
+
     private void Application_Startup(object sender, StartupEventArgs e)
     {
         FileService       = new FileService();
@@ -38,9 +46,37 @@ public partial class App : Application
         // Build the VM first so the theme is applied before the splash reads its brushes.
         var mainVm = new MainViewModel(FileService, MarkdownService, SettingsService, PluginRegistry, dialogService);
 
+        // ── Canal de progreso (SDK 1.3.0) ────────────────────────────────────
+        // El coordinador es el ÚNICO que sabe de hilos en este asunto: acá se le
+        // inyecta el marshaling al hilo de UI, igual que se hace con OpenFileAction.
+        // Un plugin reporta desde donde quiera y nunca toca un Dispatcher.
+        // BeginInvoke (no Invoke): reportar progreso jamás debe frenar al hilo que
+        // está haciendo el trabajo largo.
+        PluginProgress = new PluginProgressCoordinator(
+            action => Current.Dispatcher.BeginInvoke(DispatcherPriority.Normal, action));
+
+        // Snapshot → propiedades primitivas del VM. La proyección se hace acá para
+        // que MainViewModel no dependa de ningún tipo del subsistema de plugins.
+        PluginProgress.ActiveChanged += snapshot =>
+        {
+            if (snapshot is null) mainVm.HideProgress();
+            else mainVm.ShowProgress(
+                snapshot.Title, snapshot.Message, snapshot.Percent,
+                snapshot.OtherCount, snapshot.IsCancelling);
+        };
+
+        // El botón «Cancelar» de la barra, de vuelta hacia el coordinador (dos
+        // tiempos: primero cancela el token, la segunda vez descarta el scope).
+        mainVm.CancelProgressRequested = PluginProgress.CancelOrDiscardActive;
+
+        // Log de plugins a %AppData%/MarkdownVault/logs/plugins.log. Se enchufa acá
+        // y no por default en PluginManager a propósito: las pruebas construyen el
+        // manager sin sumidero y no ensucian el disco del usuario.
+        PluginLog = new FilePluginLogSink();
+
         // Wire the read-only host facade, then discover and load plugins from Plugins/.
         // Loading after the VM exists is safe: no preview renders until a file opens.
-        var hostServices = new HostServices(FileService)
+        var hostServices = new HostServices(FileService, PluginProgress)
         {
             DarkThemeProvider  = () => mainVm.IsDarkTheme,
             // Resolved against FocusedGroup at call time (this lambda captures mainVm, not a
@@ -56,7 +92,9 @@ public partial class App : Application
             // a plugin open of an already-open file must focus the owning group, not duplicate it.
             OpenFileAction     = path => Current.Dispatcher.Invoke(() => _ = mainVm.OpenInFocusedGroupAsync(path))
         };
-        PluginManager = new PluginManager(PluginRegistry, hostServices, SettingsService);
+        PluginManager = new PluginManager(
+            PluginRegistry, hostServices, SettingsService,
+            progress: PluginProgress, logSink: PluginLog);
         PluginManager.LoadAll();
 
         // When the active plugin set changes (enable/disable from the Plugins window),

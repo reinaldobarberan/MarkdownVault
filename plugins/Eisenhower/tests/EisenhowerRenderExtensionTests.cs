@@ -6,7 +6,7 @@ using MarkdownVault.Plugin.Eisenhower;
 using MarkdownVault.PluginSdk;
 using Xunit;
 
-namespace MarkdownVault.Tests;
+namespace MarkdownVault.Plugin.Eisenhower.Tests;
 
 /// <summary>
 /// Prueba la integración de la extensión Markdig (Batch 4): que el renderer se registre

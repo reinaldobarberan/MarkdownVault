@@ -17,4 +17,5 @@ public partial class GraphView : UserControl
     private void ZoomIn_Click(object sender, RoutedEventArgs e)  => Canvas.ZoomIn();
     private void ZoomOut_Click(object sender, RoutedEventArgs e) => Canvas.ZoomOut();
     private void Reset_Click(object sender, RoutedEventArgs e)   => Canvas.ResetView();
+    private void Unpin_Click(object sender, RoutedEventArgs e)   => Canvas.UnpinAll();
 }

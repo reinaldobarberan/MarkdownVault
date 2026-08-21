@@ -27,7 +27,20 @@
         <KeyBinding Key="OemPlus"  Modifiers="Ctrl" Command="{Binding IncreaseFontSizeCommand}"/>
         <KeyBinding Key="OemMinus" Modifiers="Ctrl" Command="{Binding DecreaseFontSizeCommand}"/>
         <KeyBinding Key="D0"       Modifiers="Ctrl" Command="{Binding ResetPreviewZoomCommand}"/>
+        <!-- Buscar / Reemplazar. Van contra RoutedUICommands (no contra el VM) porque lo
+             que hacen es abrir una ventana — ver Views/FindCommands.cs. -->
+        <KeyBinding Key="F"  Modifiers="Ctrl"  Command="{x:Static local:FindCommands.Find}"/>
+        <KeyBinding Key="H"  Modifiers="Ctrl"  Command="{x:Static local:FindCommands.Replace}"/>
+        <KeyBinding Key="F3"                   Command="{x:Static local:FindCommands.FindNext}"/>
+        <KeyBinding Key="F3" Modifiers="Shift" Command="{x:Static local:FindCommands.FindPrevious}"/>
     </Window.InputBindings>
+
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:FindCommands.Find}"         Executed="Find_Executed"/>
+        <CommandBinding Command="{x:Static local:FindCommands.Replace}"      Executed="Replace_Executed"/>
+        <CommandBinding Command="{x:Static local:FindCommands.FindNext}"     Executed="FindNext_Executed"/>
+        <CommandBinding Command="{x:Static local:FindCommands.FindPrevious}" Executed="FindPrevious_Executed"/>
+    </Window.CommandBindings>
 
     <Window.Resources>
         <!-- VS Code-style view-mode layout toggle button -->
@@ -241,6 +254,21 @@
                 <Separator/>
                 <MenuItem Header="_Salir" Click="Exit_Click"/>
             </MenuItem>
+            <MenuItem Header="_Editar">
+                <MenuItem Header="_Buscar…"
+                          Command="{x:Static local:FindCommands.Find}"
+                          InputGestureText="Ctrl+F"/>
+                <MenuItem Header="_Reemplazar…"
+                          Command="{x:Static local:FindCommands.Replace}"
+                          InputGestureText="Ctrl+H"/>
+                <Separator/>
+                <MenuItem Header="Buscar _siguiente"
+                          Command="{x:Static local:FindCommands.FindNext}"
+                          InputGestureText="F3"/>
+                <MenuItem Header="Buscar _anterior"
+                          Command="{x:Static local:FindCommands.FindPrevious}"
+                          InputGestureText="Shift+F3"/>
+            </MenuItem>
             <MenuItem Header="_Vista">
                 <MenuItem Header="_Explorador"
                           Command="{Binding ToggleExplorerCommand}"
@@ -307,6 +335,85 @@
                            Foreground="{DynamicResource StatusBarForeground}"/>
             </StatusBarItem>
         </StatusBar>
+
+        <!-- ── Barra de progreso de plugins (SDK 1.3.0) ──────────────────────
+             Va DESPUÉS del StatusBar y también con Dock="Bottom": en un DockPanel
+             los hijos anclados al mismo borde se apilan hacia adentro en orden de
+             declaración, así que el StatusBar se queda con el borde inferior y esta
+             banda se acomoda justo encima. Ocupa el ancho completo a propósito —
+             el problema que resuelve es que un texto en un rincón no se ve.
+
+             No usa ToolBar: el WPF ToolBar impone sus propios estilos implícitos
+             (ToolBar.ButtonStyleKey) y habría que remapearlos para el tema oscuro
+             (ver AGENTS.md). Un Border + Grid no tiene ese problema y todos los
+             pinceles salen del diccionario de tema por DynamicResource. -->
+        <Border DockPanel.Dock="Bottom"
+                Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVisConverter}}"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>   <!-- título -->
+                    <ColumnDefinition Width="*"/>      <!-- paso actual -->
+                    <ColumnDefinition Width="Auto"/>   <!-- "+N en segundo plano" -->
+                    <ColumnDefinition Width="Auto"/>   <!-- porcentaje -->
+                    <ColumnDefinition Width="Auto"/>   <!-- cancelar -->
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Text="{Binding ProgressTitle, Mode=OneWay}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Foreground}"
+                           VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="1"
+                           Text="{Binding ProgressMessage, Mode=OneWay}"
+                           Margin="10,0,10,0"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource SubtleForeground}"
+                           VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="2"
+                           Text="{Binding ProgressOthersText, Mode=OneWay}"
+                           Margin="0,0,10,0"
+                           FontStyle="Italic"
+                           Foreground="{DynamicResource SubtleForeground}"
+                           VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="3"
+                           Text="{Binding ProgressPercentText, Mode=OneWay}"
+                           MinWidth="44"
+                           TextAlignment="Right"
+                           Foreground="{DynamicResource Foreground}"
+                           VerticalAlignment="Center"/>
+
+                <!-- Rowspan 2: el botón queda centrado contra el bloque entero
+                     (texto + barra), no colgado de la primera línea. -->
+                <Button Grid.Row="0" Grid.Column="4" Grid.RowSpan="2"
+                        Content="{Binding ProgressCancelLabel, Mode=OneWay}"
+                        Command="{Binding CancelProgressCommand}"
+                        Style="{DynamicResource ToolbarButtonStyle}"
+                        Margin="14,0,0,0"
+                        VerticalAlignment="Center"/>
+
+                <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                             Height="6"
+                             Margin="0,6,0,0"
+                             Minimum="0" Maximum="100"
+                             Value="{Binding ProgressPercent, Mode=OneWay}"
+                             IsIndeterminate="{Binding IsProgressIndeterminate, Mode=OneWay}"
+                             Foreground="{DynamicResource AccentBrush}"
+                             Background="{DynamicResource WindowBackground}"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                             BorderThickness="1"/>
+            </Grid>
+        </Border>
 
         <!-- ── Main layout: FileTree | Editor | Preview ── -->
         <Grid>

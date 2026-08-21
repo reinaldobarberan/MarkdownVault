@@ -1,7 +1,7 @@
 # Guía de Desarrollo de Plugins — MarkdownVault
 
 > **Estado del documento:** DISEÑO / ESPECIFICACIÓN + implementación en curso.
-> Este manual es la fuente de verdad del contrato. Versión del SDK: **1.2.0**.
+> Este manual es la fuente de verdad del contrato. Versión del SDK: **1.4.0**.
 
 ### Estado de implementación (migración de Mermaid)
 
@@ -269,9 +269,21 @@ public interface IPluginContext
     void AddCommand(PluginCommand command);
     void AddCommandGroup(PluginCommandGroup group);
     void AddPanel(PluginPanel panel);
+
+    /// <summary>
+    /// Registra una LISTA EDITABLE que el host dibuja en la ventana de
+    /// complementos (SDK 1.4.0). Ver la sección "PluginListSetting" en
+    /// [tipos de contribución](#6-tipos-de-contribución).
+    /// </summary>
+    void AddListSetting(PluginListSetting setting);
+
     void OnVaultEvent(Action<VaultEvent> handler);
 
-    /// <summary>Log dirigido a la consola de diagnóstico de la app.</summary>
+    /// <summary>
+    /// Log de diagnóstico. Va a DOS destinos: la consola del depurador
+    /// (`Debug.WriteLine`) y un ARCHIVO legible,
+    /// `%AppData%/MarkdownVault/logs/plugins.log` (SDK 1.3.0+). Nunca lanza.
+    /// </summary>
     void Log(string message);
 
     /// <summary>
@@ -293,7 +305,15 @@ public interface IHostServices
     bool    IsDarkTheme { get; }
 
     Task<string> ReadFileAsync(string relativePath);
+
+    /// Aviso INSTANTÁNEO en la barra de estado (esquina inferior derecha).
+    /// Para operaciones LARGAS usá BeginProgress: esto es letra chica en un
+    /// rincón y no alcanza para contar minutos de trabajo.
     void ShowStatus(string message);
+
+    /// Canal de progreso VISIBLE para una operación larga (SDK 1.3.0+).
+    /// Nunca devuelve null. Ver la sección siguiente.
+    IProgressScope BeginProgress(string title);
 
     /// Abre relativePath en el editor del host. Confinado al vault: no-op
     /// silencioso (nunca lanza) si la ruta escapa del vault o no existe.
@@ -306,6 +326,91 @@ public interface IHostServices
 > superficie mínima es intencional. Si un plugin necesita persistir datos
 > propios (caché, configuración, estado), usa `IPluginStorage` (abajo) — un
 > sandbox separado del vault, no un permiso para escribir en él.
+
+### `IProgressScope` — progreso de operaciones largas (SDK 1.3.0+)
+
+`ShowStatus` alcanza para "ya está" y NO alcanza para "esto va a tardar tres
+minutos". Un plugin que descarga 574 MB y después transcribe durante minutos
+usando solo `ShowStatus` produce una aplicación que **parece colgada** — pasó de
+verdad con `core.dictado-voz`. `BeginProgress` es el canal para eso: una barra
+real, de ancho completo, con título, paso actual, porcentaje y botón de cancelar.
+
+```csharp
+public interface IProgressScope : IDisposable
+{
+    /// Se dispara cuando el usuario aprieta «Cancelar» en la barra.
+    CancellationToken CancellationToken { get; }
+    bool IsCancellationRequested { get; }
+
+    /// percent va de 0 a 100 (NO de 0 a 1). null ⇒ modo INDETERMINADO.
+    /// message vacío CONSERVA el mensaje anterior.
+    void Report(double? percent, string message);
+
+    /// Cambia solo el mensaje, conservando el modo actual.
+    void Report(string message);
+}
+
+/// Scope que no hace nada. El host lo devuelve cuando no hay barra conectada,
+/// y sirve como valor por defecto en helpers del plugin.
+public sealed class NoOpProgressScope : IProgressScope
+{
+    public static readonly IProgressScope Instance;
+}
+```
+
+Uso típico:
+
+```csharp
+using var progreso = context.Host.BeginProgress("Dictado de voz");
+
+progreso.Report(null, "Preparando el motor…");          // indeterminado
+progreso.Report(42, "Descargando el modelo (547 MB)…"); // 42 %
+
+var texto = await MotorAsync(progreso.CancellationToken);   // cancelable
+```
+
+Reglas del contrato — el host las cumple, el plugin puede confiar en ellas:
+
+- **Ciclo de vida determinista.** La barra aparece con `BeginProgress` y
+  desaparece con `Dispose`. Usá `using`. `Dispose` **no cancela**: disponer
+  significa "terminé", no "abortá" — si cancelara, todo `using` mataría su propio
+  trabajo al salir del bloque.
+- **Hilos: problema del host, no tuyo.** `Report` se puede llamar desde
+  CUALQUIER hilo; el traslado al hilo de interfaz lo hace el host (mismo criterio
+  que `ShowStatus`). Un plugin **nunca** necesita saber qué es un `Dispatcher`
+  para reportar progreso. Las ráfagas se fusionan del lado del host: reportar
+  cada 0,5 % de una descarga no satura nada.
+- **Cancelación de verdad.** El `CancellationToken` del scope es el mismo botón
+  que el usuario ve. Observalo en tus bucles y pasalo a tus llamadas asíncronas.
+  Esto **reemplaza** tener que agregar un ítem "Cancelar" en tu propio menú.
+- **Concurrencia: pila (LIFO), no cola.** Puede haber varios scopes vivos a la
+  vez (dos plugins, o un plugin con dos trabajos). Se muestra **el más reciente**;
+  al cerrarlo reaparece el anterior, y la barra anota "+N en segundo plano".
+  *Por qué pila y no cola:* los trabajos largos se **anidan por causalidad** (la
+  transcripción abre el arranque del motor, que abre la descarga del modelo). Con
+  una cola FIFO se mostraría el más viejo y el paso que realmente avanza —el de
+  adentro— nunca se vería, que es justo el problema que esto viene a resolver.
+  Además, el scope más nuevo es el que el usuario acaba de provocar con un clic.
+- **Descarga en caliente.** Al desactivar un plugin, el host **cancela y cierra
+  TODOS** sus scopes (ver [sección 9](#9-cómo-la-app-detecta-lista-activa-y-desactiva)).
+  Después de eso, `Report` y `Dispose` son no-ops silenciosos: nunca lanzan.
+- **No retiene tipos del plugin.** Un scope guarda solo texto, un número y un
+  `CancellationTokenSource` — todos tipos del framework. El host no se queda con
+  ningún delegate ni tipo definido por vos, así que la barra no clava tu
+  `AssemblyLoadContext`.
+- **Sin temporizador de rescate — a propósito.** Si un plugin se olvida de
+  disponer el scope, la barra queda visible. NO hay timeout: un temporizador
+  tendría que adivinar cuánto es "demasiado" y se equivocaría con una descarga de
+  574 MB en una conexión lenta. Hay dos salidas deterministas en su lugar:
+  (a) el botón de cancelar es de **dos tiempos** — la primera pulsación dispara el
+  token y el botón pasa a decir «Descartar», la segunda saca la barra aunque el
+  plugin nunca haya cooperado; (b) desactivar el plugin barre todos sus scopes.
+  Igual: **disponé tu scope**. Que exista una red no es permiso para caerse.
+
+> **Elegir el canal correcto:** `ShowStatus` para lo instantáneo (guardado,
+> error, "no se detectó habla"); `BeginProgress` para todo lo que el usuario
+> tenga que ESPERAR; `Log` para el detalle técnico que nadie mira salvo cuando
+> algo falla.
 
 ### `IPluginStorage` — persistencia sandbox por plugin (SDK 1.1.0+)
 
@@ -380,6 +485,7 @@ reales del código actual.
 | **MarkdownExtension** | Agregar sintaxis nueva Markdown → HTML | El pipeline de Markdig en `MarkdownService` |
 | **Command** | Agregar un botón/acción a la toolbar o paleta del editor | Los comandos de `EditorViewModel` |
 | **Panel** | Aportar una vista lateral (como el grafo) | El mecanismo de `GraphView` |
+| **ListSetting** | Una lista editable (clave, o clave+valor) que el HOST dibuja en la ventana de Complementos (SDK 1.4.0) | `PluginsWindow.xaml` / `PluginListSettingViewModel` |
 | **VaultEvent** | Reaccionar a cambios de archivos del vault | Los eventos de `FileService` |
 
 ### `PreviewAsset`
@@ -413,11 +519,27 @@ public sealed class PluginCommand
 
 public interface IEditorContext
 {
+    /// <summary>Texto completo del documento activo.</summary>
     string Content { get; }
+
+    /// <summary>Texto actualmente seleccionado (cadena vacía si no hay selección).</summary>
+    string SelectedText { get; }
+
+    /// <summary>Inserta texto en el cursor (en una línea nueva si hace falta).</summary>
     void InsertAtCaret(string text);
+
+    /// <summary>Envuelve la selección con before/after.</summary>
+    void WrapSelection(string before, string after);
+
+    /// <summary>Reemplaza la selección (o inserta en el cursor si no hay selección).</summary>
     void ReplaceSelection(string text);
 }
 ```
+
+> **Límite conocido:** no hay forma de seleccionar un rango POR CÓDIGO. Un plugin
+> no puede insertar un marcador de progreso en el documento y reemplazarlo
+> después: el marcador quedaría como basura que el usuario borra a mano. Para
+> avisar de un trabajo largo está `IProgressScope`, no el documento.
 
 > **Icon en botones únicos:** si un `PluginCommand` de botón único (no en un
 > `PluginCommandGroup`) declara `Icon` (un glifo de la fuente `Segoe MDL2
@@ -426,6 +548,100 @@ public interface IEditorContext
 > botón. Si `Icon` es `null`/vacío, el botón sigue mostrando `Title` como
 > texto (comportamiento sin cambios). El dropdown de `PluginCommandGroup` no
 > se ve afectado por este cambio.
+
+### `PluginListSetting` (SDK 1.4.0)
+
+**El porqué antes que el cómo.** La [sección 9](#plugins-con-ui-wpf-y-descarga-en-caliente)
+documenta una limitación dura: un plugin que declara su propio tipo derivado de
+`System.Windows.Window` (o cualquier `DependencyObject`) clava las cachés estáticas de WPF
+a nivel PROCESO y pierde la descarga en caliente — el caso conocido de `EisenhowerWindow`.
+`PluginListSetting` es la salida a eso para el caso más común de "un plugin necesita
+configuración editable": **el host dibuja la ventana, el plugin solo declara los datos y
+sus reglas**. Lo único que cruza la frontera son strings y delegates — exactamente lo mismo
+que ya cruza con `PluginCommand`, que se descarga sin problemas. Cero tipos de WPF del lado
+del plugin ⇒ cero riesgo de pin.
+
+```csharp
+public readonly record struct PluginListEntry(string Key, string? Value);
+
+public sealed class PluginListSetting
+{
+    public string  Id          { get; init; } = "";   // estable dentro del plugin (ej. "core.dictado.glosario")
+    public string  Title       { get; init; } = "";   // rótulo, tal como lo lee el usuario
+    public string? Description { get; init; }         // una línea explicando para qué sirve. Opcional.
+    public string  KeyLabel    { get; init; } = "";    // encabezado de la primera columna (ej. "Término")
+    public string? ValueLabel  { get; init; }          // encabezado de la segunda. null ⇒ una sola columna
+
+    public Func<IReadOnlyList<PluginListEntry>>   Load     { get; init; } = () => Array.Empty<PluginListEntry>();
+    public Action<IReadOnlyList<PluginListEntry>> Save     { get; init; } = _ => { };
+    public Func<IReadOnlyList<PluginListEntry>, string?>? Describe { get; init; }
+}
+```
+
+**Qué hace el host, qué hace el plugin.** El host se encarga de TODO lo genérico: agregar,
+editar, borrar (fila por fila), filtrar por texto, avisar entradas vacías o duplicadas (sin
+distinguir mayúsculas — ver más abajo) y el guardado explícito con botones «Guardar» /
+«Descartar». El plugin se encarga solo de lo SUYO: de dónde salen los datos (`Load`), adónde
+van (`Save`) y qué significan (`Describe`, opcional).
+
+**`ValueLabel` habilita una segunda columna.** `null` ⇒ la lista tiene una sola columna y
+`PluginListEntry.Value` viaja siempre en `null` (es el caso de `core.dictado-voz`: el
+glosario es una lista de términos, no un mapa). Con `ValueLabel` puesto, la fila muestra dos
+cajas de texto — clave y valor. Es el caso del diccionario de pronunciación del **Lector de
+Documentos** (`core.lector-documentos`): son los MISMOS términos que el glosario del dictado,
+con su pronunciación al lado.
+
+**Los dos consumidores difieren en algo que conviene entender**, porque ilustra qué debería
+decir `Describe`: en `core.dictado-voz` el glosario se le pasa a `whisper-server` como
+argumento AL ARRANCAR, así que un término nuevo no surte efecto hasta reiniciar el motor — y
+`Describe` lo AVISA. En `core.lector-documentos` no hace falta reiniciar nada: `piper.exe` se
+lanza en cada lectura y el diccionario se aplica al texto antes de sintetizar, así que el
+término nuevo entra en la lectura siguiente. Ahí `Describe` no muestra advertencia alguna, y
+esa ausencia es la información.
+
+La regla que sale de eso: `Describe` no es para adornar con un contador. Es para decirle al
+usuario **qué le falta hacer para que lo que acaba de guardar tenga efecto** — y si no le
+falta nada, callarse.
+
+**Garantía del contrato: `Save` recibe la lista ya normalizada por el host.** Sin espacios
+sobrantes al principio/final de cada columna, sin entradas con la clave vacía, y sin claves
+repetidas (se queda con la primera aparición de cada clave). La comparación de duplicados es
+`OrdinalIgnoreCase`: "Pipeline" y "pipeline" son la MISMA entrada. Los acentos, en cambio, SÍ
+distinguen — "publico" y "público" son dos entradas distintas, que es lo correcto para un
+glosario de términos técnicos. Un plugin que implementa `Save` no necesita volver a limpiar
+nada: lo que recibe ya está en condiciones de escribirse tal cual.
+
+**Ejemplo mínimo** (glosario de un solo término, ver el caso real completo en
+`plugins/DictadoVoz/DictadoVozPlugin.cs`):
+
+```csharp
+context.AddListSetting(new PluginListSetting
+{
+    Id          = "miplugin.terminos",
+    Title       = "Términos propios",
+    KeyLabel    = "Término",
+    ValueLabel  = null,                       // una sola columna
+    Load        = () => _terminos.Select(t => new PluginListEntry(t, null)).ToList(),
+    Save        = entries =>
+    {
+        _terminos = entries.Select(e => e.Key).ToList();
+        context.Storage.WriteTextAsync("terminos.json", JsonSerializer.Serialize(_terminos))
+               .GetAwaiter().GetResult();
+    },
+    Describe    = entries => $"{entries.Count} términos guardados."
+});
+```
+
+> **Guardado, no autoguardado.** `Save` se llama solo cuando el usuario aprieta «Guardar» —
+> nunca en cada tecla. Si tu delegate tiene un efecto caro o visible (reescribir un archivo,
+> reconfigurar un motor en marcha), este es el punto del contrato pensado exactamente para
+> eso: el usuario decide cuándo el cambio se hace efectivo, no vos.
+>
+> **`Save` corre en el hilo de UI.** Tiene que ser corto. Si lanza, el host muestra el mensaje
+> de la excepción al lado de la lista y NO da el guardado por hecho — la ventana no se cierra
+> sola ni el estado "sin guardar" se limpia. Lo mismo para `Load` (si lanza, la lista arranca
+> vacía con un aviso) y `Describe` (si lanza, el host simplemente no muestra nada: no vale la
+> pena tumbar la ventana por un cartel informativo).
 
 ### `MarkdownExtension`
 
@@ -693,6 +909,16 @@ Para cada plugin `Enabled`:
 
 ### Desactivación en caliente
 
+- **Primero se barren sus scopes de progreso** (SDK 1.3.0+): el host cancela el
+  `CancellationToken` de cada `IProgressScope` que el plugin dejó abierto y lo
+  saca de la barra. Va ANTES de `OnDeactivatedAsync()` y no después, por dos
+  motivos: (1) cancelar es la señal de corte para el trabajo de fondo que el
+  plugin tenga en vuelo, así que `OnDeactivatedAsync` encuentra el terreno ya
+  desarmado en vez de esperar a que termine solo; (2) garantiza el invariante
+  duro del contrato — al desactivar, **ningún** scope del plugin sobrevive, ni
+  siquiera uno que el plugin se olvidó de disponer. Los scopes de OTROS plugins
+  no se tocan: cada uno lleva estampado el id de su dueño (`PluginHostServices`),
+  el mismo criterio de propiedad que usa `RemoveByOwner`.
 - Se llama `OnDeactivatedAsync()` si aplica.
 - Se quitan sus contribuciones del registry con `RemoveByOwner` (no sólo se filtran).
 - Se **descarga** el DLL: `AssemblyLoadContext.Unload()` + `GC.Collect()`. Como el
@@ -701,8 +927,11 @@ Para cada plugin `Enabled`:
   se libera de memoria. Reactivar lo vuelve a cargar en un contexto nuevo.
 - **Cuidado (documentado):** si algún código del host retuviera una referencia a un
   tipo del plugin, el `Unload()` no completaría y el contexto quedaría "zombie". El
-  orden importa: primero `RemoveByOwner` + `RaiseChanged` (suelta referencias), luego
-  `Unload`. Hay un test (`Collectible_context_is_unloaded_after_gc`) que verifica la
+  orden importa: primero barrer los scopes de progreso, después `RemoveByOwner` +
+  `RaiseChanged` (suelta referencias), y recién entonces `Unload`. Los scopes en sí
+  NO son un riesgo de zombie: el host solo guarda texto, un número y un
+  `CancellationTokenSource` — nada definido por el plugin. Eso fue deliberado al
+  diseñar el canal de progreso, no una casualidad. Hay un test (`Collectible_context_is_unloaded_after_gc`) que verifica la
   liberación con `WeakReference`.
 
 ### Plugins con UI WPF y descarga en caliente
@@ -770,7 +999,7 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 - Cambios **rompientes** (cambiar una firma de `IPlugin`) → suben la *major* y
   obligan a recompilar plugins. Evitalos.
 
-> **SDK 1.1.0 (actual):** agrega `IPluginContext.Storage` (persistencia sandbox,
+> **SDK 1.1.0:** agrega `IPluginContext.Storage` (persistencia sandbox,
 > ver [sección 5](#5-el-contrato-referencia-del-sdk)) y
 > `IPluginContext.RequestPreviewRefresh()`. Es un cambio **aditivo**: los
 > plugins existentes solo CONSUMEN `IPluginContext` (el host lo implementa vía
@@ -781,13 +1010,51 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 > `"minSdk": "1.1.0"` o mayor podrá asumir que `Storage`/`RequestPreviewRefresh`
 > existen.
 
-> **SDK 1.2.0 (actual):** agrega `IHostServices.OpenVaultFile(string relativePath)`
+> **SDK 1.2.0:** agrega `IHostServices.OpenVaultFile(string relativePath)`
 > — abre un archivo del vault en el editor del host (confinado, no-op silencioso
 > si escapa o no existe). Cambio **aditivo**: los plugins solo CONSUMEN
 > `IHostServices` (el host lo implementa vía `HostServices`), así que compilan
 > sin cambios contra el SDK 1.2.0. Un plugin con `"minSdk": "1.1.0"` o menor
 > sigue siendo aceptado; solo un plugin que declare `"minSdk": "1.2.0"` podrá
 > asumir que `OpenVaultFile` existe.
+
+> **SDK 1.3.0:** agrega el **canal de progreso**
+> (`IHostServices.BeginProgress`, `IProgressScope`, `NoOpProgressScope` — ver
+> [sección 5](#5-el-contrato-referencia-del-sdk)) y manda `IPluginContext.Log`
+> a un archivo legible además de a `Debug.WriteLine`. Cambio **aditivo** para
+> quien CONSUME el contrato: los plugins consumen `IHostServices` (lo implementa
+> el host vía `HostServices`), así que compilan y activan sin tocar una línea.
+>
+> **La excepción a mirar:** agregar un miembro a una interfaz **rompe a quien la
+> IMPLEMENTA**, no a quien la usa. En este repositorio los únicos implementadores
+> de `IHostServices` son el host y el doble de pruebas `FakeHost` — ningún plugin
+> la implementa (verificado uno por uno: `Mermaid`, `Highlight`, `Callouts`,
+> `CopyButton`, `Eisenhower`, `LectorDocumentos` y `DictadoVoz` solo la
+> consumen). Por eso alcanza con subir la *minor*. Si algún día un plugin de
+> terceros implementara `IHostServices`, esto sería un cambio ROMPIENTE para él.
+>
+> **SDK 1.4.0 (actual):** agrega la contribución **`PluginListSetting`**
+> (`IPluginContext.AddListSetting`, `PluginListEntry` — ver
+> [la sección `PluginListSetting`](#pluginlistsetting-sdk-140) en el punto 6) y el
+> método de consulta `PluginRegistry.ListSettingsFor(owner)`. Es la salida a la
+> limitación de la [sección 9](#plugins-con-ui-wpf-y-descarga-en-caliente): en vez de que
+> cada plugin con configuración editable declare su propia `Window` (y pierda la descarga
+> en caliente), declara una LISTA y el host la dibuja. Cambio **aditivo**: los plugins solo
+> CONSUMEN `IPluginContext` (el host lo implementa vía `HostPluginContext`), así que
+> compilan y activan sin tocar una línea contra el SDK 1.4.0. Un plugin con
+> `"minSdk": "1.3.0"` o menor sigue siendo aceptado; solo un plugin que declare
+> `"minSdk": "1.4.0"` podrá asumir que `AddListSetting` existe.
+>
+> `minSdk` de los plugins, verificado contra cada `plugin.json`:
+>
+> | Plugin | `minSdk` | Motivo |
+> |---|---|---|
+> | `core.dictado-voz` | `1.4.0` | usa `AddListSetting` (glosario editable) |
+> | `core.lector-documentos` | `1.4.0` | usa `BeginProgress` y `AddListSetting` (diccionario editable) |
+> | `core.eisenhower` | `1.2.0` | usa `OpenVaultFile` |
+> | `core.mermaid`, `core.highlight`, `core.callouts`, `core.copybutton` | `1.0.0` | solo contribuciones base |
+>
+> Todos siguen cargando: la comprobación es `minSdk <= SDK del host`.
 
 ---
 
@@ -797,7 +1064,10 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 |---|---|---|
 | El plugin no aparece en la lista | Falta `plugin.json` o está mal formado | Validar el JSON y los campos obligatorios |
 | Aparece como `Failed: incompatible` | `minSdk` mayor que el SDK del host | Actualizar la app o bajar el target del plugin |
-| Aparece pero al activar `Failed` | Excepción en `Configure` | Revisar la consola de diagnóstico (usá `context.Log`) |
+| Aparece pero al activar `Failed` | Excepción en `Configure` | Leer `%AppData%/MarkdownVault/logs/plugins.log` (ahí va `context.Log`) |
+| El plugin trabaja y la app parece colgada | Se está usando `ShowStatus` para una operación larga | Abrir un `IProgressScope` con `Host.BeginProgress` |
+| La barra de progreso queda visible para siempre | El plugin no dispuso su `IProgressScope` | Envolverlo en `using`. Salida de emergencia: apretar «Cancelar» dos veces, o desactivar el plugin |
+| El log de plugins no crece | El sumidero se apagó tras 5 fallos de escritura seguidos (permisos, disco lleno) | Revisar permisos sobre `%AppData%/MarkdownVault/logs/` y reiniciar la app |
 | `Could not load type IPlugin` | Se duplicó `MarkdownVault.PluginSdk.dll` en la carpeta del plugin | Quitar el SDK duplicado (`<Private>false</Private>`) |
 | Las contribuciones no tienen efecto | El plugin está descubierto pero **desactivado** | Activarlo desde Configuración → Plugins |
 
@@ -811,6 +1081,11 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 - [ ] `Configure` registra contribuciones y no hace I/O pesado.
 - [ ] `plugin.json` con `id` estable, `entry` correcto y `minSdk` real.
 - [ ] Recursos propios en `assets/`, referenciados como `AssetSource.BundledFile`.
+- [ ] Toda operación que pueda pasar de ~2 segundos abre un `IProgressScope` con
+      `using`, reporta avance y **observa su `CancellationToken`**. `ShowStatus`
+      queda solo para avisos instantáneos.
+- [ ] El diagnóstico va por `context.Log` (termina en
+      `%AppData%/MarkdownVault/logs/plugins.log`), no por la barra de progreso.
 - [ ] No se copia el SDK ni dependencias del host a la salida.
 - [ ] Probado: aparece en la lista, activa/desactiva y sus contribuciones surten
       efecto en caliente.

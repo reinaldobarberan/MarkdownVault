@@ -1,0 +1,133 @@
+<Window x:Class="MarkdownVault.Views.FindReplaceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="clr-namespace:MarkdownVault.Helpers"
+        Title="Buscar y reemplazar"
+        Width="470" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStyle="ToolWindow"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackground}"
+        Foreground="{DynamicResource Foreground}"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <!-- Ventana NO modal, propiedad de MainWindow (Owner): flota siempre por encima del
+         editor pero lo deja vivo — se puede hacer clic en el texto, corregir a mano y
+         volver acá sin cerrarla. Cerrarla en realidad la ESCONDE (ver code-behind), así
+         los campos y las opciones sobreviven hasta el próximo Ctrl+F. -->
+
+    <Window.InputBindings>
+        <KeyBinding Key="F3"                   Command="{Binding FindNextCommand}"/>
+        <KeyBinding Key="F3"  Modifiers="Shift" Command="{Binding FindPreviousCommand}"/>
+        <KeyBinding Key="Enter" Modifiers="Shift" Command="{Binding FindPreviousCommand}"/>
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <!-- Declarados acá y no tomados del diccionario de tema: son converters sin color,
+             idénticos en claro y oscuro, y así la ventana no depende de qué tema esté
+             cargado en el momento en que se parsea. -->
+        <helpers:BoolToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style TargetType="Button">
+            <Setter Property="Padding"  Value="12,5"/>
+            <Setter Property="MinWidth" Value="104"/>
+            <Setter Property="Margin"   Value="6,0,0,0"/>
+            <Setter Property="Cursor"   Value="Hand"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <!-- Sin esto el texto sale negro sobre fondo oscuro: no hay estilo implícito
+                 de CheckBox en los diccionarios de tema. -->
+            <Setter Property="Foreground"        Value="{DynamicResource Foreground}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin"            Value="0,0,16,0"/>
+            <Setter Property="FontSize"          Value="12"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground"          Value="{DynamicResource Foreground}"/>
+            <Setter Property="VerticalAlignment"   Value="Center"/>
+            <Setter Property="Margin"              Value="0,0,10,0"/>
+            <Setter Property="FontSize"            Value="12"/>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="14" Grid.IsSharedSizeScope="True">
+
+        <!-- ── Buscar ── -->
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelColumn"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ActionColumn"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="Buscar:" Style="{StaticResource FieldLabel}"/>
+
+            <TextBox x:Name="SearchBox"
+                     Grid.Column="1"
+                     Style="{DynamicResource SearchBoxStyle}"
+                     Tag="Texto a buscar"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Anterior"  Command="{Binding FindPreviousCommand}"/>
+                <Button Content="Siguiente" Command="{Binding FindNextCommand}" IsDefault="True"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ── Reemplazar (oculta con Ctrl+F, visible con Ctrl+H) ── -->
+        <Grid Margin="0,0,0,8"
+              Visibility="{Binding ShowReplace, Converter={StaticResource BoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelColumn"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ActionColumn"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="Reemplazar:" Style="{StaticResource FieldLabel}"/>
+
+            <TextBox x:Name="ReplaceBox"
+                     Grid.Column="1"
+                     Style="{DynamicResource SearchBoxStyle}"
+                     Tag="Texto de reemplazo"
+                     Text="{Binding ReplaceText, UpdateSourceTrigger=PropertyChanged}"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Reemplazar"
+                        ToolTip="Reemplaza la coincidencia seleccionada y salta a la siguiente"
+                        Command="{Binding ReplaceCommand}"/>
+                <Button Content="Todo"
+                        ToolTip="Reemplaza todas las coincidencias del archivo activo (un solo Ctrl+Z para deshacer)"
+                        Command="{Binding ReplaceAllCommand}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ── Opciones ── -->
+        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+            <CheckBox Content="Mayúsculas/minúsculas" IsChecked="{Binding MatchCase}"/>
+            <CheckBox Content="Palabra completa"      IsChecked="{Binding WholeWord}"/>
+            <CheckBox Content="Regex"                 IsChecked="{Binding UseRegex}"
+                      ToolTip="Expresión regular. En el reemplazo se pueden usar los grupos capturados: $1, $2, $&amp;"/>
+        </StackPanel>
+
+        <!-- ── Resultado ── -->
+        <TextBlock Text="{Binding Status}"
+                   Margin="0,10,0,0"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   MinHeight="15">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{DynamicResource SubtleForeground}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                            <Setter Property="Foreground" Value="#E06C75"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </StackPanel>
+</Window>

@@ -31,12 +31,45 @@
         </DataTemplate>
 
         <DataTemplate x:Key="PluginGroupTemplate">
+            <!-- Mismo criterio que PluginSingleTemplate: por defecto el desplegable muestra
+                 el Title como texto; si el plugin declaró Icon, muestra el glifo. El ToolTip
+                 SIEMPRE lleva el Title — un icono sin tooltip obliga a adivinar, y eso es
+                 peor que el texto que vino a reemplazar.
+
+                 El chevron va en un TextBlock aparte con la fuente por defecto a propósito:
+                 "▾" (U+25BE) NO está en Segoe MDL2 Assets, así que meterlo en el mismo run
+                 que el glifo lo dejaría como un cuadrado vacío. -->
             <Menu Background="Transparent" VerticalAlignment="Center">
-                <MenuItem Header="{Binding Title, StringFormat={}{0} &#x25BE;}"
-                          FontSize="13" Padding="6,2"
+                <!-- Mismo criterio que el desplegable de Código: el grupo no tiene comando, así que
+                     su portón se ata a mano. Acá el DataContext es el PluginToolbarItemViewModel,
+                     no el grupo de edición, de ahí el salto por RelativeSource hasta EditorView. -->
+                <MenuItem FontSize="13" Padding="6,2"
+                          ToolTip="{Binding Title}"
+                          IsEnabled="{Binding DataContext.HasOpenDocument,
+                                      RelativeSource={RelativeSource AncestorType=views:EditorView}}"
                           Foreground="{DynamicResource Foreground}"
                           Background="Transparent"
                           ItemsSource="{Binding Children}">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Setter Property="Header" Value="{Binding Title, StringFormat={}{0} &#x25BE;}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                    <Setter Property="Header" Value="{Binding Icon}"/>
+                                    <Setter Property="HeaderTemplate">
+                                        <Setter.Value>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding}" FontFamily="Segoe MDL2 Assets"/>
+                                                    <TextBlock Text="&#x25BE;" Margin="4,0,0,0"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
                     <MenuItem.ItemContainerStyle>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                             <Setter Property="Header"  Value="{Binding Title}"/>
@@ -99,10 +132,14 @@
 
                 <!-- Code-block dropdown -->
                 <Menu Background="Transparent" VerticalAlignment="Center">
+                    <!-- El desplegable no tiene comando propio, así que su CanExecute no lo apaga:
+                         se ata a mano al mismo portón que sus hijos. Si no, sin documento abierto
+                         quedaría vivo y abriría un menú con todo adentro en gris. -->
                     <MenuItem Header="{}Código &#x25BE;"
                               FontFamily="Consolas" FontSize="13"
                               Padding="6,2"
                               ToolTip="Insertar bloque de código"
+                              IsEnabled="{Binding HasOpenDocument}"
                               Foreground="{DynamicResource Foreground}"
                               Background="Transparent">
                         <MenuItem Header="C#"          FontFamily="Consolas"
@@ -180,14 +217,51 @@
              binds GraphView directly where this EditorView sits, toggled by the workbench's
              ShowGraph. This UserControl no longer owns any graph-swap logic. -->
         <!-- SyntaxHighlighting is set in code-behind after programmatic registration -->
-        <avalonEdit:TextEditor
-            x:Name="TextEditor"
-            ShowLineNumbers="True"
-            WordWrap="True"
-            Padding="8"
-            HorizontalScrollBarVisibility="Auto"
-            VerticalScrollBarVisibility="Auto"
-            Background="{DynamicResource EditorBackground}"
-            Foreground="{DynamicResource Foreground}"/>
+        <!-- Sin pestaña abierta el panel NO es un editor: es un estado vacío. Antes el área de
+             texto quedaba visible y editable, y lo que se escribía ahí no lo persistía nadie
+             (EditorGroupViewModel.OnContentChanged solo escribe en ActiveTab), así que la
+             primera apertura de archivo lo pisaba sin aviso. Ahora el editor se oculta y en su
+             lugar se dice qué hacer. IsReadOnly va igual: doble red, por si alguien vuelve a
+             mostrar el control sin revisar esta invariante. -->
+        <Grid>
+            <avalonEdit:TextEditor
+                x:Name="TextEditor"
+                ShowLineNumbers="True"
+                WordWrap="True"
+                Padding="8"
+                HorizontalScrollBarVisibility="Auto"
+                VerticalScrollBarVisibility="Auto"
+                Background="{DynamicResource EditorBackground}"
+                Foreground="{DynamicResource Foreground}"
+                IsReadOnly="{Binding IsEditorReadOnly}"
+                Visibility="{Binding HasOpenDocument, Converter={StaticResource BoolToVisConverter}}"/>
+
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        MaxWidth="420"
+                        Visibility="{Binding HasOpenDocument, Converter={StaticResource InverseBoolToVisConverter}}">
+                <TextBlock Text="&#xE7C3;"
+                           FontFamily="Segoe MDL2 Assets"
+                           FontSize="42"
+                           HorizontalAlignment="Center"
+                           Opacity="0.5"
+                           Foreground="{DynamicResource SubtleForeground}"/>
+                <TextBlock Text="No hay ningún archivo abierto"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Margin="0,14,0,0"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource Foreground}"/>
+                <TextBlock Margin="0,6,0,0"
+                           FontSize="12"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource SubtleForeground}">
+                    <Run Text="Elegí un archivo en el explorador de la izquierda,"/>
+                    <LineBreak/>
+                    <Run Text="o creá uno nuevo con "/><Run Text="Ctrl+N" FontWeight="SemiBold"/><Run Text="."/>
+                </TextBlock>
+            </StackPanel>
+        </Grid>
     </DockPanel>
 </UserControl>

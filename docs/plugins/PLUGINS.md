@@ -20,6 +20,8 @@ Este documento explica el sistema desde el punto de vista del **usuario**: qué 
 | [Botón de copiar](#botón-de-copiar) | Agrega un botón para copiar el contenido de cada bloque de código. |
 | [Callouts](#callouts) | Alertas estilo Obsidian con título en línea. |
 | [Eisenhower](#eisenhower) | Matriz de tareas urgente/importante con ventana dedicada. Ver guía aparte: [`EISENHOWER.md`](EISENHOWER.md). |
+| [Lector de Documentos](#lector-de-documentos) | Lee el documento en voz alta con Piper, sin internet. Ver guía aparte: [`LECTOR-DOCUMENTOS.md`](LECTOR-DOCUMENTOS.md). |
+| [Dictado y Transcripción de Voz](#dictado-y-transcripción-de-voz) | Transcribe un audio o dicta en vivo por micrófono con whisper.cpp, sin internet. Ver guía aparte: [`DICTADO-VOZ.md`](DICTADO-VOZ.md). |
 
 ### Mermaid
 
@@ -68,6 +70,28 @@ Gestor de tareas basado en la matriz de Eisenhower (urgente × importante), con 
 
 **Ver [`EISENHOWER.md`](EISENHOWER.md).**
 
+### Lector de Documentos
+
+Lee el documento abierto —o solo lo que tengas seleccionado— en voz alta, usando **Piper**: un
+sintetizador de voz que corre en tu máquina. No manda el texto a ningún servidor, no necesita
+internet ni cuenta de nada, y funciona igual con el documento más confidencial que tengas.
+
+Desde el menú **Lector** de la barra: leer documento, leer selección, pausar/reanudar, detener,
+velocidad y elección de voz.
+
+**Ver [`LECTOR-DOCUMENTOS.md`](LECTOR-DOCUMENTOS.md).**
+
+### Dictado y Transcripción de Voz
+
+Transcribe un archivo de audio (`.opus`/`.mp3`/`.m4a`/`.mp4`/`.wav`) al documento, o dicta en vivo
+por micrófono insertando cada frase al hacer una pausa — usando **whisper.cpp**: reconocimiento de
+voz local, sin internet ni cuentas (salvo la descarga única del modelo, ~574 MB, la primera vez).
+
+Desde el menú **Dictado** de la barra: transcribir audio, cancelar, iniciar/detener dictado, y
+estado del motor.
+
+**Ver [`DICTADO-VOZ.md`](DICTADO-VOZ.md).**
+
 ## ¿Querés construir tu propio plugin?
 
-El sistema de plugins es la misma vía por la que se implementaron los cuatro complementos de arriba — no hay una API privada del core. La referencia completa del contrato (SDK, tipos de contribución, ciclo de vida, empaquetado) está en [`GUIA-PLUGINS.md`](GUIA-PLUGINS.md).
+El sistema de plugins es la misma vía por la que se implementaron los complementos de arriba — no hay una API privada del core. La referencia completa del contrato (SDK, tipos de contribución, ciclo de vida, empaquetado) está en [`GUIA-PLUGINS.md`](GUIA-PLUGINS.md).

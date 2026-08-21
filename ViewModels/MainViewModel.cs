@@ -162,6 +162,12 @@ public partial class MainViewModel : ObservableObject
             return true;
         };
 
+        // Plugin writes are pinned to the tab that was active when the command ran, and a tab
+        // can MIGRATE between panes without closing ("Mover al otro panel", ExitSplit). This
+        // lookup lets a pinned context follow the TAB instead of the pane, so a long-running
+        // dictation survives the move instead of being reported as "closed".
+        group.OwnerOfTab = tab => Groups.FirstOrDefault(g => g.OpenTabs.Contains(tab));
+
         // Keep the graph's active-file highlight in sync, but only for the focused group —
         // a background pane switching tabs shouldn't move the highlight (design §2.2). Also
         // watch for this group's tab collection going empty: SE-4's auto-collapse fires only
@@ -237,6 +243,85 @@ public partial class MainViewModel : ObservableObject
     // ─── Status bar (promoted from EditorGroupViewModel, Phase 2) ─────────────
 
     [ObservableProperty] private string _statusMessage = "Listo";
+
+    // ─── Barra de progreso de plugins (SDK 1.3.0) ─────────────────────────────
+    //
+    // La barra de estado alcanzaba para "Guardado 20:14:03" y NO alcanzaba para
+    // contarle al usuario que se están descargando 574 MB: letra chica, esquina
+    // inferior derecha, nadie la mira. Esto es la superficie visible del canal
+    // IProgressScope del SDK.
+    //
+    // Este VM no conoce el coordinador ni ningún tipo de plugin: recibe primitivos
+    // por ShowProgress/HideProgress (ya en el hilo de UI) y devuelve la cancelación
+    // por un delegate que se enchufa en App.xaml.cs — mismo patrón que
+    // CompareViewFactory. Así todo esto es puro y testeable sin WPF ni plugins.
+
+    [ObservableProperty] private bool   _isProgressVisible;
+    [ObservableProperty] private string _progressTitle           = "";
+    [ObservableProperty] private string _progressMessage         = "";
+    [ObservableProperty] private double _progressPercent;
+    [ObservableProperty] private bool   _isProgressIndeterminate = true;
+
+    /// <summary>"57 %" o vacío si el avance es indeterminado.</summary>
+    [ObservableProperty] private string _progressPercentText = "";
+
+    /// <summary>"+2 en segundo plano" cuando hay más de un trabajo largo a la vez.</summary>
+    [ObservableProperty] private string _progressOthersText = "";
+
+    /// <summary>
+    /// "Cancelar" pasa a "Descartar" una vez que el usuario ya pidió cancelar. No es
+    /// cosmética: le dice que la segunda pulsación saca la barra aunque el plugin no
+    /// haya cortado todavía (es la salida de emergencia que reemplaza a un timeout).
+    /// </summary>
+    [ObservableProperty] private string _progressCancelLabel = "Cancelar";
+
+    /// <summary>
+    /// Lo enchufa App.xaml.cs contra <c>PluginProgressCoordinator.CancelOrDiscardActive</c>.
+    /// Null en pruebas: el comando queda inerte, sin lanzar.
+    /// </summary>
+    public Action? CancelProgressRequested { get; set; }
+
+    /// <summary>
+    /// Pinta el trabajo largo que está al tope de la pila de scopes.
+    /// <paramref name="percent"/> null ⇒ modo indeterminado. Se llama SIEMPRE desde
+    /// el hilo de UI (el coordinador ya hizo el marshaling).
+    /// </summary>
+    public void ShowProgress(string title, string message, double? percent, int others, bool cancelling)
+    {
+        ProgressTitle           = title;
+        ProgressMessage         = message;
+        IsProgressIndeterminate = percent is null;
+        ProgressPercent         = percent ?? 0;
+        ProgressPercentText     = FormatPercent(percent);
+        ProgressOthersText      = FormatOthers(others);
+        ProgressCancelLabel     = cancelling ? "Descartar" : "Cancelar";
+        IsProgressVisible       = true;
+    }
+
+    /// <summary>No queda ningún scope vivo: la barra desaparece.</summary>
+    public void HideProgress()
+    {
+        IsProgressVisible   = false;
+        ProgressTitle       = "";
+        ProgressMessage     = "";
+        ProgressPercentText = "";
+        ProgressOthersText  = "";
+        ProgressPercent     = 0;
+        ProgressCancelLabel = "Cancelar";
+    }
+
+    /// <summary>Sin decimales: en una barra, "57 %" y "57,3 %" dicen lo mismo y el
+    /// segundo tiembla. Invariante para que no dependa de la cultura del sistema.</summary>
+    internal static string FormatPercent(double? percent) =>
+        percent is { } p
+            ? Math.Round(p).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %"
+            : "";
+
+    internal static string FormatOthers(int others) =>
+        others <= 0 ? "" : $"+{others} en segundo plano";
+
+    [RelayCommand]
+    private void CancelProgress() => CancelProgressRequested?.Invoke();
 
     // ─── Graph (promoted from EditorGroupViewModel, Phase 2 / Decision 2) ─────
 
@@ -664,6 +749,100 @@ public partial class MainViewModel : ObservableObject
     {
         SaveSettings();
         _fileService.Dispose();
+    }
+
+    // ─── Cierre con cambios sin guardar ──────────────────────────────────────
+    // Hueco de PÉRDIDA DE DATOS: Window_Closing guardaba la configuración y cerraba, sin mirar
+    // nunca si quedaban pestañas modificadas. CloseTab pregunta al cerrar UNA pestaña; cerrar la
+    // APLICACIÓN no preguntaba nada. Con el guardado automático alcanzando solo a la pestaña
+    // activa, un dictado largo hacia una pestaña de segundo plano se perdía entero.
+    //
+    // Mismo patrón de seam que CompareViewFactory / CancelProgressRequested: el VM decide QUÉ
+    // preguntar (puro, testeable) y la View provee la superficie modal. Deliberadamente NO se
+    // agrega a IDialogService — esta pregunta necesita una lista de documentos, no un
+    // "¿guardar sí/no?" por archivo.
+
+    /// <summary>
+    /// Lo enchufa <c>MainWindow.Window_Closing</c> contra el diálogo real. Null en pruebas: el
+    /// cierre se CANCELA (ver <see cref="RequestExitCancelled"/>) en vez de descartar en silencio.
+    /// </summary>
+    internal Func<UnsavedChangesReport, ConfirmResult>? UnsavedChangesPrompt { get; set; }
+
+    /// <summary>
+    /// Qué hay sin guardar en TODOS los paneles, más el trabajo largo en vuelo si lo hay.
+    ///
+    /// La operación en curso sale de la barra de progreso de plugins, que es lo único que el host
+    /// ya sabe hoy sobre trabajos en vuelo: dictado en vivo y transcripción de archivo abren su
+    /// scope (<c>BeginProgress</c>) y por eso son detectables. Un plugin que trabaje sin abrir
+    /// scope es INVISIBLE para el host — acá no se inventa un mecanismo para adivinarlo.
+    /// </summary>
+    internal UnsavedChangesReport BuildUnsavedReport() =>
+        UnsavedChangesReport.Build(
+            Groups.Select(g => (IReadOnlyList<OpenTab>)g.OpenTabs).ToList(),
+            IsProgressVisible ? ProgressTitle : null);
+
+    /// <summary>Vacía a disco las pestañas sucias de TODOS los paneles. Devuelve los fallos.</summary>
+    internal IReadOnlyList<string> SaveAllDirtyTabsBlocking() =>
+        Groups.SelectMany(g => g.SaveDirtyTabsBlocking()).ToList();
+
+    /// <summary>
+    /// Punto único de cierre. Devuelve <c>true</c> si hay que CANCELAR el cierre.
+    /// Cuando devuelve <c>false</c> ya dejó todo persistido: es el llamador el que cierra.
+    /// </summary>
+    public bool RequestExitCancelled()
+    {
+        var report = BuildUnsavedReport();
+
+        if (report.ShouldPrompt)
+        {
+            // Sin diálogo enchufado NO se descarta nada: se frena el cierre. Perder contenido por
+            // un cable suelto sería exactamente el bug que este código existe para cerrar, y la
+            // salida sigue estando a mano (guardar, o cerrar las pestañas una por una, que sí
+            // pregunta) — molesto pero reversible.
+            if (UnsavedChangesPrompt is null)
+            {
+                StatusMessage = "Hay documentos con cambios sin guardar. Guardalos antes de salir.";
+                return true;
+            }
+
+            switch (UnsavedChangesPrompt(report))
+            {
+                case ConfirmResult.Cancel:
+                    return true;
+
+                case ConfirmResult.Yes:
+                    var failed = SaveAllDirtyTabsBlocking();
+
+                    // Falló una escritura, o hay un documento que nunca tuvo ruta en disco (no hay
+                    // archivo que actualizar). En los dos casos se ABORTA el cierre: el usuario
+                    // pidió guardar y no se guardó todo — cerrar igual sería perder el contenido
+                    // justo después de que dijo que no quería perderlo.
+                    if (failed.Count > 0)
+                    {
+                        _dialogService.ShowError(
+                            "No se pudieron guardar estos documentos, así que no se cerró la aplicación:\n\n"
+                            + string.Join("\n", failed),
+                            "Error al guardar");
+                        return true;
+                    }
+
+                    if (report.HasNeverSaved)
+                    {
+                        _dialogService.ShowError(
+                            report.NeverSavedWarning!,
+                            "Faltan documentos por guardar");
+                        return true;
+                    }
+                    break;
+
+                case ConfirmResult.No:
+                    // Descarte EXPLÍCITO: el usuario vio los nombres y eligió salir igual.
+                    break;
+            }
+        }
+
+        OnExit();
+        return false;
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

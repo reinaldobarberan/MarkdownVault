@@ -36,11 +36,14 @@ MarkdownVault/
 │   ├── EditorGroupViewModel.cs   # VM del editor (tabs, contenido, preview, formato)
 │   ├── FileTreeViewModel.cs      # VM del árbol de archivos (una sección por vault abierto)
 │   ├── VaultsViewModel.cs        # VM de "Administrar vaults" (abrir/cerrar cada vault conocido)
-│   └── GraphViewModel.cs         # VM del grafo de notas, scopeado al vault del tab activo
+│   ├── GraphViewModel.cs         # VM del grafo de notas, scopeado al vault del tab activo
+│   └── FindReplaceViewModel.cs   # VM del formulario Buscar/Reemplazar (patrón, opciones, comandos)
 ├── Views/
 │   ├── MainWindow.xaml / .cs     # Ventana principal (layout, WebView2, tabs)
 │   ├── EditorView.xaml / .cs     # Editor AvalonEdit + toolbar de formato
 │   ├── FileTreeView.xaml / .cs   # Árbol lateral del vault
+│   ├── FindReplaceWindow.xaml / .cs # Formulario flotante de Buscar/Reemplazar (no modal)
+│   ├── FindCommands.cs           # RoutedUICommands de Buscar/Reemplazar (menú + atajos)
 │   └── InputDialog.xaml / .cs    # Diálogo para input de usuario
 ├── Services/
 │   ├── FileService.cs            # I/O de archivos, escaneo; mantiene VaultRoots (multi-root)
@@ -48,7 +51,9 @@ MarkdownVault/
 │   ├── MarkdownService.cs        # Markdown → HTML (Markdig) + CSS + Mermaid
 │   ├── SettingsService.cs        # Persistencia de configuración
 │   ├── ISpellCheckService.cs     # Contrato del corrector + record SpellError
-│   └── WindowsSpellCheckService.cs # Motor COM Windows ISpellChecker
+│   ├── WindowsSpellCheckService.cs # Motor COM Windows ISpellChecker
+│   ├── TextSearch.cs             # Motor puro de Buscar/Reemplazar (string in / offsets out)
+│   └── IFindReplaceTarget.cs     # Costura formulario de búsqueda ↔ editor con foco
 ├── Helpers/
 │   ├── BoolToIconConverter.cs    # Converter WPF
 │   ├── BoolToVisibilityConverter.cs
@@ -93,6 +98,7 @@ El **File Tree muestra una sección por cada vault abierto** (multi-root): no ha
 - **Multi-vault (workspace multi-root)**: varios vaults pueden estar abiertos a la vez, cada uno con su propia sección en el explorador y su propio `FileSystemWatcher`. "Administrar vaults" (`VaultsViewModel` / `VaultsWindow`) es un **toggle abrir/cerrar por fila** — no hay un único vault "activo" para seleccionar. El set de vaults abiertos persiste en `AppSettings.OpenVaultPaths` entre sesiones
 - **Editor**: AvalonEdit con syntax highlighting, números de línea, word wrap
 - **Corrector ortográfico**: Subrayado rojo ondulado bajo palabras mal escritas, usando los diccionarios del SO (Windows `ISpellChecker`). Idioma configurable vía `SpellCheckLanguage` (empty = auto por cultura del SO). Solo en `.md/.markdown/.txt`; saltea bloques de código, frontmatter YAML, URLs, HTML y links
+- **Buscar y reemplazar**: Menú `Editar` + `Ctrl+F` (buscar), `Ctrl+H` (reemplazar), `F3` / `Shift+F3` (siguiente / anterior sin abrir el formulario). Formulario flotante NO modal: el editor sigue editable mientras está abierto. Opciones mayúsculas/minúsculas, palabra completa y regex (con grupos `$1` en el reemplazo). Alcance: el archivo del panel con foco — no busca en todo el vault
 - **Formato rápido**: Toolbar con Bold, Italic, Code, H1-H3, listas, enlaces, imágenes, bloques de código por lenguaje
 - **Vista previa**: WebView2 renderizando HTML con CSS GitHub-flavored
 - **Modos de vista**: Solo editor | Editor + Preview | Solo visor (ciclo con botón en toolbar)
@@ -115,6 +121,33 @@ El **File Tree muestra una sección por cada vault abierto** (multi-root): no ha
 - **Explorador**: `FileTreeViewModel.RootNodes` tiene una sección por vault abierto (`AddRoot`/`RemoveRoot` agregan/quitan solo esa sección, sin reconstruir las demás). El refresh ante cambios en disco es scopeado por root vía `FileService.VaultChanged` (trae el root que cambió, no reconstruye todo el árbol).
 - **"Administrar vaults"** (`VaultsViewModel` + `Views/VaultsWindow.xaml`) es un **toggle abrir/cerrar** por fila del set de vaults conocidos — no existe un único vault "activo" para seleccionar. Cerrar un vault quita su sección del explorador y su watcher, pero **no cierra los tabs ya abiertos** de ese vault (quedan editables). Un vault abierto no se puede eliminar de la lista de conocidos hasta cerrarlo primero.
 - **Persistencia**: `AppSettings.OpenVaultPaths` guarda el set de vaults abiertos (orden = orden de apertura, índice 0 = top vault) y se restaura al arrancar con un `FileService.AddRoot` por entrada. Es distinto de `KnownVaultPaths` (nunca se achica al cerrar un vault) y del legacy `LastVaultPath` (un solo path). Hay una **migración de una sola vez**: si `OpenVaultPaths` está vacío y `LastVaultPath` tiene valor, se semilla `OpenVaultPaths` con ese único path; el flag `AppSettings.VaultPathsMigrated` evita que esto se repita en cada arranque (para que un vault que el usuario cerró deliberadamente no "resucite").
+
+### Plugins: progreso y log (SDK 1.3.0)
+- **Un plugin tiene DOS canales hacia el usuario, no uno.** `IHostServices.ShowStatus` es para avisos INSTANTÁNEOS (barra de estado, esquina inferior derecha). `IHostServices.BeginProgress(title)` devuelve un `IProgressScope` (`using`) para operaciones LARGAS: barra de ancho completo sobre la barra de estado, con título, paso, porcentaje (o indeterminada) y botón de cancelar. Usar `ShowStatus` para algo que dura minutos produce una app que *parece colgada* — es exactamente lo que pasó con `core.dictado-voz` y 574 MB de descarga.
+- **El marshaling al hilo de UI lo hace el HOST**, no el plugin: `PluginProgressCoordinator` recibe el delegate de marshaling en `App.xaml.cs` (`Dispatcher.BeginInvoke`), igual que `StatusSink`/`OpenFileAction`. Un plugin reporta desde cualquier hilo y nunca toca un `Dispatcher`. El coordinador además FUSIONA ráfagas (bandera `_postPending`) y deduplica snapshots idénticos.
+- **Concurrencia = pila LIFO**, no cola: se muestra el scope más reciente y la barra anota "+N en segundo plano". Los trabajos largos se anidan por causalidad (transcripción → arranque del motor → descarga del modelo); con FIFO el paso que realmente avanza nunca se vería.
+- **Propiedad por plugin vía decorador.** `HostServices` es UNA instancia compartida por todos los plugins, así que no sabe quién llama. `HostPluginContext` envuelve la fachada en `PluginHostServices`, que estampa el id del plugin en cada scope. Sin eso no se puede cumplir el invariante duro: **al desactivar un plugin, `PluginManager.Deactivate` cierra y cancela TODOS sus scopes** (antes de `OnDeactivatedAsync`, para que el trabajo en vuelo reciba la señal de corte).
+- **No hay timeout para un scope olvidado** — a propósito. Las dos salidas son: el botón de cancelar de DOS TIEMPOS (1ª = cancela el token y pasa a decir «Descartar»; 2ª = saca la barra aunque el plugin no coopere) y el barrido al desactivar.
+- **`context.Log` ya no cae en un pozo.** Además de `Debug.WriteLine` (que desaparece entero en Release por `[Conditional("DEBUG")]`), va a `%AppData%/MarkdownVault/logs/plugins.log` vía `FilePluginLogSink`: cola acotada con `DropWrite` (nunca bloquea ni crece sin techo), un hilo escritor que drena en lotes, rotación a 1 MB con un solo respaldo (`plugins.1.log`), y auto-apagado tras 5 fallos de escritura seguidos. **Nunca lanza hacia el plugin.** El sumidero se inyecta en `App.xaml.cs`; el default de `PluginManager` es `NullPluginLogSink` para que las pruebas no escriban en el `%AppData%` del usuario.
+- **Agregar un miembro a `IHostServices` es aditivo para quien la CONSUME y rompiente para quien la IMPLEMENTA.** Los únicos implementadores del repo son `HostServices` y el doble `FakeHost` de tests; ningún plugin la implementa. Por eso la subida es de *minor*.
+
+### Plugins: listas editables (SDK 1.4.0)
+- **`IPluginContext.AddListSetting(PluginListSetting)`** deja que un plugin declare una lista editable (clave, o clave+valor si `ValueLabel` no es `null`) sin definir ninguna `Window` propia. El HOST la dibuja entera (`Views/PluginsWindow.xaml` + `ViewModels/PluginListSettingViewModel.cs`): alta, baja, edición, filtro, aviso de duplicados/vacíos y guardado explícito. El plugin solo aporta `Load`/`Save`/`Describe`. Es la salida a la limitación de WPF que clava el `AssemblyLoadContext` (ver `docs/plugins/GUIA-PLUGINS.md` §9): declarar una `Window` propia pierde la descarga en caliente; declarar una lista, no.
+- **Normalización y duplicados son responsabilidad del host** (`Services/Plugins/PluginListRules.cs`, lógica pura sin WPF): recorte de espacios, descarte de claves vacías, deduplicación `OrdinalIgnoreCase` (los acentos sí distinguen). `Save` recibe la lista YA normalizada; el plugin no tiene que volver a limpiarla.
+- **`core.dictado-voz` es el único consumidor real hoy** (el glosario técnico, ver `plugins/DictadoVoz/DictadoVozPlugin.cs` + `TechnicalGlossary.cs`). El diccionario de pronunciación de `core.lector-documentos` es el caso pensado para `ValueLabel` (segunda columna) pero **todavía no lo adoptó**.
+
+### Buscar / Reemplazar
+- **El `SearchPanel` de AvalonEdit NO tiene reemplazo.** Verificado sobre el ensamblado de `Quicker.AvalonEdit` 6.3.1: `ICSharpCode.AvalonEdit.Search.SearchPanel` solo expone `FindNext`/`FindPrevious`/`Open`/`Close` y las tres opciones (`MatchCase`, `WholeWords`, `UseRegex`). Además nunca se llamó a `SearchPanel.Install(...)`, así que tampoco estaba el Ctrl+F integrado. Por eso hay motor propio (`Services/TextSearch.cs`) en vez de envolver el del fork.
+- **El motor es C# puro sobre un `string`** — recibe texto y devuelve offsets; no conoce AvalonEdit ni WPF. Toda la lógica que importa (bordes de palabra, wrap, expansión de grupos, patrones de largo cero) se testea headless en `TextSearchTests`. La vista solo traduce offsets a selección y scroll.
+- **"Palabra completa" usa lookarounds `(?<!\w)…(?!\w)`, NO `\b`.** `\b` es un borde ENTRE un carácter de palabra y uno que no lo es, así que un patrón que empieza o termina en símbolo (`->`, `(x)`) nunca coincidiría con `\b` a los costados. Es un caso real en Markdown técnico.
+- **Un patrón de largo cero cuelga el recorrido si no se saltea explícitamente.** `a*` o `^` coinciden con la cadena vacía en CADA posición: `TextSearch.Enumerate` avanza un carácter a mano cuando `m.Length == 0`. Además toda regex se compila con un `matchTimeout` de 2s — sin él, un `(a+)+$` escrito por el usuario congela el hilo de UI.
+- **El destino es el panel con FOCO, no "el editor".** Con `IsSplit` hay dos `EditorView`. Por eso `FindReplaceViewModel` no guarda un `IFindReplaceTarget` sino un `Func<IFindReplaceTarget?>` que se vuelve a consultar en CADA operación: cambiar de panel o de pestaña con el formulario abierto no lo deja apuntando al documento equivocado.
+- **La ventana NO es modal, a propósito.** Es una ventana *owned* por `MainWindow`: flota siempre encima pero el editor sigue vivo (se puede hacer clic en el texto y corregir a mano sin cerrarla). Un `ShowDialog()` bloquearía el documento justo cuando el usuario acaba de saltar a él.
+- **Cerrar el formulario lo ESCONDE, no lo destruye** — así sobreviven el patrón y las opciones, y `F3` repite la última búsqueda con la ventana cerrada. Consecuencia obligatoria: `MainWindow.Window_Closing` llama a `FindReplaceWindow.ForceClose()`. El `ShutdownMode` por defecto es `OnLastWindowClose`, y una ventana escondida que cancela su propio `Closing` dejaría el proceso vivo sin nada en pantalla.
+- **"Reemplazar todo" se aplica de la ÚLTIMA a la primera** dentro de un `Document.BeginUpdate()/EndUpdate()`. Los offsets se calculan contra el texto original; aplicar de adelante hacia atrás los correría a todos. El `BeginUpdate` además agrupa las N ediciones en un solo Ctrl+Z.
+- **"Reemplazar" (singular) solo toca el documento si la selección ES exactamente una coincidencia** (`TextSearch.ReplacementAt`). Sin esa guarda, el botón pisaría cualquier texto que el usuario haya seleccionado a mano. Si no calza, solo posiciona en la siguiente — el segundo clic ya reemplaza.
+- **`$` en el reemplazo es literal salvo en modo regex.** `Match.Result` expande `$1`/`$&`; en modo texto plano se inserta el reemplazo tal cual, para que escribir `US$1` no se convierta en un grupo capturado.
+- **El `CheckBox` necesita `Foreground` explícito.** No hay estilo implícito de `CheckBox` en los diccionarios de tema, así que sin setearlo el texto sale negro sobre fondo oscuro.
 
 ### WPF ToolBar
 - WPF ToolBar aplica sus propios estilos implícitos (`ToolBar.ButtonStyleKey`) a los hijos. Para que los botones respeten el tema oscuro, hay que mapear explícitamente el style key dentro de `ToolBar.Resources`.

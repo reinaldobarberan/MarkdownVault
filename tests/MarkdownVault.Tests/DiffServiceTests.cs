@@ -27,7 +27,7 @@ public class DiffServiceTests
     {
         var rows = Svc.Diff("a\nc", "a\nb\nc");
 
-        var added = Assert.Single(rows.Where(r => r.Kind == DiffLineKind.Added));
+        var added = Assert.Single(rows, r => r.Kind == DiffLineKind.Added);
         Assert.Equal("b", added.RightText);
         Assert.Equal("", added.LeftText);
         Assert.Null(added.LeftLineNumber);
@@ -39,7 +39,7 @@ public class DiffServiceTests
     {
         var rows = Svc.Diff("a\nb\nc", "a\nc");
 
-        var deleted = Assert.Single(rows.Where(r => r.Kind == DiffLineKind.Deleted));
+        var deleted = Assert.Single(rows, r => r.Kind == DiffLineKind.Deleted);
         Assert.Equal("b", deleted.LeftText);
         Assert.Equal("", deleted.RightText);
         Assert.Equal(2, deleted.LeftLineNumber);
@@ -51,7 +51,7 @@ public class DiffServiceTests
     {
         var rows = Svc.Diff("hello world", "hello there");
 
-        var mod = Assert.Single(rows.Where(r => r.Kind == DiffLineKind.Modified));
+        var mod = Assert.Single(rows, r => r.Kind == DiffLineKind.Modified);
         Assert.Equal("hello world", mod.LeftText);
         Assert.Equal("hello there", mod.RightText);
         Assert.Equal(1, mod.LeftLineNumber);

@@ -10,9 +10,22 @@ namespace MarkdownVault.Services.Plugins;
 /// </summary>
 public sealed class HostServices : IHostServices
 {
-    private readonly FileService _fileService;
+    /// <summary>
+    /// Dueño con el que se etiquetan los scopes abiertos contra ESTA fachada
+    /// compartida, es decir los que no pasaron por el decorador por plugin
+    /// (<see cref="PluginHostServices"/>). En la app real no debería haber ninguno:
+    /// un id reservado y feo hace que salte a la vista si aparece uno.
+    /// </summary>
+    public const string HostOwnerId = "__host__";
 
-    public HostServices(FileService fileService) => _fileService = fileService;
+    private readonly FileService                _fileService;
+    private readonly PluginProgressCoordinator? _progress;
+
+    public HostServices(FileService fileService, PluginProgressCoordinator? progress = null)
+    {
+        _fileService = fileService;
+        _progress    = progress;
+    }
 
     public Func<bool>?    DarkThemeProvider  { get; set; }
     public Func<string?>? ActiveFileProvider { get; set; }
@@ -42,6 +55,19 @@ public sealed class HostServices : IHostServices
     }
 
     public void ShowStatus(string message) => StatusSink?.Invoke(message);
+
+    /// <summary>
+    /// Canal de progreso (SDK 1.3.0). El marshaling al hilo de UI lo hace el
+    /// coordinador con el delegate que le inyectan en composición — mismo criterio
+    /// que <see cref="StatusSink"/>, y por eso este tipo no conoce el Dispatcher.
+    ///
+    /// Los plugins NO llegan por acá: reciben la vista decorada
+    /// (<see cref="PluginHostServices"/>) que estampa su id. Esta implementación
+    /// existe porque el contrato la exige y para que un host armado a mano (una
+    /// prueba) siga siendo utilizable.
+    /// </summary>
+    public IProgressScope BeginProgress(string title)
+        => _progress?.Begin(HostOwnerId, title) ?? NoOpProgressScope.Instance;
 
     public void OpenVaultFile(string relativePath)
     {

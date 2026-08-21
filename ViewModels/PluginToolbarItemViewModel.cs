@@ -22,49 +22,62 @@ public sealed class PluginToolbarItemViewModel
     /// </summary>
     public bool HasIcon => !string.IsNullOrEmpty(Icon);
 
-    /// <summary>Crea un botón único a partir de un <see cref="PluginCommand"/>.</summary>
-    public static PluginToolbarItemViewModel Single(PluginCommand command, IEditorContext editor) => new()
+    /// <summary>
+    /// Crea un botón único a partir de un <see cref="PluginCommand"/>.
+    ///
+    /// Recibe una FÁBRICA de contextos, no un contexto: la barra se construye una vez (y se
+    /// reconstruye solo al activar/desactivar plugins), pero el contexto tiene que nacer en el
+    /// instante del clic para poder fijar la pestaña activa DE ESE MOMENTO. Ver
+    /// <see cref="PinnedEditorContext"/> — compartir un contexto entre invocaciones es
+    /// literalmente el bug de corrupción silenciosa que este parámetro elimina.
+    /// </summary>
+    /// <param name="canExecute">
+    /// Portón opcional, evaluado por WPF para habilitar o no el botón. El host pasa acá «hay
+    /// documento abierto»: sin pestaña, un comando de plugin no tiene a dónde escribir y su
+    /// invocación termina degradando con un aviso en la barra de estado
+    /// (<see cref="PinnedEditorContext"/>). Un botón gris explica eso mucho mejor que uno vivo
+    /// que no hace nada. Null ⇒ siempre habilitado, para llamadores que no declaran portón.
+    /// </param>
+    public static PluginToolbarItemViewModel Single(
+        PluginCommand command, Func<IEditorContext> editorFactory, Func<bool>? canExecute = null) => new()
     {
         Title   = command.Title,
         Icon    = command.Icon,
         IsGroup = false,
-        Command = new RelayCommand(() => SafeExecute(command, editor))
+        Command = canExecute is null
+            ? new RelayCommand(() => SafeExecute(command, editorFactory))
+            : new RelayCommand(() => SafeExecute(command, editorFactory), canExecute)
     };
 
     /// <summary>Crea un menú desplegable a partir de un <see cref="PluginCommandGroup"/>.</summary>
-    public static PluginToolbarItemViewModel Group(PluginCommandGroup group, IEditorContext editor) => new()
+    public static PluginToolbarItemViewModel Group(
+        PluginCommandGroup group, Func<IEditorContext> editorFactory, Func<bool>? canExecute = null) => new()
     {
         Title    = group.Title,
         Icon     = group.Icon,
         IsGroup  = true,
-        Children = group.Commands.Select(c => Single(c, editor)).ToList()
+        Children = group.Commands.Select(c => Single(c, editorFactory, canExecute)).ToList()
     };
 
-    private static void SafeExecute(PluginCommand command, IEditorContext editor)
+    /// <summary>
+    /// Fuerza a WPF a reconsultar el <c>CanExecute</c> de este item y de sus hijos. Hace falta
+    /// porque <see cref="RelayCommand"/> no observa nada: si nadie avisa, el botón se queda con
+    /// el estado que tenía cuando se construyó la barra.
+    /// </summary>
+    internal void NotifyCanExecuteChanged()
+    {
+        Command?.NotifyCanExecuteChanged();
+        if (Children is null) return;
+        foreach (var child in Children) child.NotifyCanExecuteChanged();
+    }
+
+    private static void SafeExecute(PluginCommand command, Func<IEditorContext> editorFactory)
     {
         // Un comando de plugin que explota no debe tumbar la app.
-        try { command.Execute(editor); }
+        try { command.Execute(editorFactory()); }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[plugin-command:{command.Id}] falló: {ex}");
         }
     }
-}
-
-/// <summary>
-/// Puente entre <see cref="IEditorContext"/> (SDK) y el <see cref="EditorGroupViewModel"/>.
-/// Traduce las operaciones a los eventos que ya maneja la vista del editor.
-/// </summary>
-internal sealed class EditorContextAdapter : IEditorContext
-{
-    private readonly EditorGroupViewModel _vm;
-
-    public EditorContextAdapter(EditorGroupViewModel vm) => _vm = vm;
-
-    public string Content      => _vm.Content;
-    public string SelectedText => _vm.PluginGetSelectedText();
-
-    public void InsertAtCaret(string text)                 => _vm.PluginInsertAtCaret(text);
-    public void WrapSelection(string before, string after) => _vm.PluginWrapSelection(before, after);
-    public void ReplaceSelection(string text)              => _vm.PluginReplaceSelection(text);
 }

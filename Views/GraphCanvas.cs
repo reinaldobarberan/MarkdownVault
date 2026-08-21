@@ -22,6 +22,7 @@ public sealed class GraphCanvas : FrameworkElement
     // ── Interaction ──
     private GraphNode? _hover;
     private GraphNode? _dragNode;
+    private bool       _dragWasPinned;
     private bool       _panning;
     private Point      _lastPointer;
     private double     _moved;
@@ -33,6 +34,7 @@ public sealed class GraphCanvas : FrameworkElement
     private static readonly Brush ActiveRing = Frozen("#FFFFFF");
     private static readonly Color LinkColor  = Color.FromRgb(90, 90, 90);
     private static readonly Color LinkHot    = Color.FromRgb(111, 168, 220);
+    private static readonly Color PinRing    = Color.FromRgb(183, 196, 209);
 
     private GraphViewModel? Vm => DataContext as GraphViewModel;
 
@@ -52,6 +54,13 @@ public sealed class GraphCanvas : FrameworkElement
 
     public void ZoomIn()  => _scale = Math.Min(4,    _scale * 1.2);
     public void ZoomOut() => _scale = Math.Max(0.25, _scale / 1.2);
+
+    /// <summary>Releases every hand-placed node so the simulation lays them out again.</summary>
+    public void UnpinAll()
+    {
+        if (Vm is null) return;
+        foreach (var n in Vm.Nodes) n.Unpin();
+    }
 
     /// <summary>Centre button: reset zoom to 1× and recentre.</summary>
     public void ResetView()
@@ -129,9 +138,9 @@ public sealed class GraphCanvas : FrameworkElement
         {
             n.Vx += -n.X * centerK;
             n.Vy += -n.Y * centerK;
-            if (n.Fx is not null)
+            if (n.Pinned)
             {
-                n.X = n.Fx.Value; n.Y = n.Fy!.Value;
+                n.X = n.Fx!.Value; n.Y = n.Fy!.Value;
                 n.Vx = n.Vy = 0;
                 continue;
             }
@@ -168,6 +177,7 @@ public sealed class GraphCanvas : FrameworkElement
         var penDim    = FrozenPen(LinkColor, 0.25, 1.0 / _scale);
         var penHot    = FrozenPen(LinkHot,   0.85, 1.6 / _scale);
         var ringPen   = FrozenPen(Colors.White, 1.0, 2.0 / _scale);
+        var pinPen    = FrozenPen(PinRing, 0.9, 1.3 / _scale);
 
         // ── Links ──
         foreach (var l in vm.Links)
@@ -193,6 +203,12 @@ public sealed class GraphCanvas : FrameworkElement
 
             if (dim) dc.PushOpacity(0.28);
             dc.DrawEllipse(fill, isActive ? ringPen : null, new Point(n.X, n.Y), r, r);
+            // Halo around nodes the user parked by hand, so a fixed layout stays readable.
+            if (n.Pinned)
+            {
+                double pr = r + 3.5 / _scale;
+                dc.DrawEllipse(null, pinPen, new Point(n.X, n.Y), pr, pr);
+            }
             if (dim) dc.Pop();
 
             if (showLabels && (_scale > 0.55 || n.Id == focusId || isActive))
@@ -267,6 +283,7 @@ public sealed class GraphCanvas : FrameworkElement
         if (node is not null)
         {
             _dragNode = node;
+            _dragWasPinned = node.Pinned;
             node.Fx = node.X; node.Fy = node.Y;
             Cursor = Cursors.SizeAll;
         }
@@ -307,18 +324,42 @@ public sealed class GraphCanvas : FrameworkElement
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
-        if (_dragNode is not null && _moved < 4)
-            Vm?.RequestOpen(_dragNode.Id);
-
         if (_dragNode is not null)
         {
-            _dragNode.Fx = _dragNode.Fy = null;
+            if (_moved < 4)
+            {
+                // A plain click opens the note and must leave the pin state untouched.
+                if (!_dragWasPinned) _dragNode.Unpin();
+                Vm?.RequestOpen(_dragNode.Id);
+            }
+            // A real drag KEEPS Fx/Fy: the node stays exactly where it was dropped until
+            // the user releases it (right-click on it, or the "liberar nodos" button).
         }
         _dragNode = null;
         _panning  = false;
         Cursor = Cursors.Arrow;
         ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    /// <summary>Capture can be lost mid-drag (Alt+Tab, a modal dialog). Drop the gesture so the
+    /// node is not dragged around afterwards without a button held; it keeps its current pin.</summary>
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        _dragNode = null;
+        _panning  = false;
+        Cursor = Cursors.Arrow;
+    }
+
+    /// <summary>Right-click on a pinned node releases it back into the simulation.</summary>
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        var node = Pick(ToWorld(e.GetPosition(this)));
+        if (node is not null && node.Pinned)
+        {
+            node.Unpin();
+            e.Handled = true;
+        }
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)

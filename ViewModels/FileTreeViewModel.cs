@@ -163,6 +163,7 @@ public partial class FileTreeViewModel : ObservableObject
 
         var path = _fileService.CreateFile(dir, name);
         RefreshOwnerOf(dir);
+        ExpandDirectory(dir);
         FileOpenRequested?.Invoke(path);
     }
 
@@ -183,6 +184,7 @@ public partial class FileTreeViewModel : ObservableObject
 
         _fileService.CreateDirectory(dir, name);
         RefreshOwnerOf(dir);
+        ExpandDirectory(dir);
     }
 
     [RelayCommand]
@@ -248,13 +250,21 @@ public partial class FileTreeViewModel : ObservableObject
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Rebuilds one root's section from disk in place — used both by the scoped
-    /// <see cref="FileService.VaultChanged"/> handler and by the CRUD commands below, so a
-    /// local create/rename/delete refreshes only the affected vault, never every open one.
-    /// A stale root (already closed via <see cref="RemoveRoot"/>, e.g. a late watcher
-    /// callback) is silently ignored.
+    /// Sincroniza una sección con el disco — usado tanto por el handler acotado de
+    /// <see cref="FileService.VaultChanged"/> como por los comandos CRUD de arriba, así que un
+    /// alta/renombre/borrado local refresca solo el vault afectado y nunca todos los abiertos.
+    /// Una raíz obsoleta (ya cerrada vía <see cref="RemoveRoot"/>, p. ej. una notificación
+    /// tardía del watcher) se ignora en silencio.
+    ///
+    /// RECONCILIA el árbol existente en vez de reemplazarlo (ver <see cref="Reconcile"/>). Antes
+    /// hacía <c>RootNodes[index] = ToNode(BuildTree(root))</c>, y eso fabricaba nodos nuevos con
+    /// <see cref="VaultFileNode.IsExpanded"/> en false: crear un archivo colapsaba TODAS las
+    /// carpetas abiertas, porque de la expansión solo se rescataba la de la raíz.
+    ///
+    /// Interna, no privada, para que los tests puedan ejercitar la reconciliación sin pasar por
+    /// los comandos (que abren diálogos modales) ni por el watcher (que necesita Dispatcher).
     /// </summary>
-    private void RefreshRoot(string root)
+    internal void RefreshRoot(string root)
     {
         var index = -1;
         for (var i = 0; i < RootNodes.Count; i++)
@@ -267,11 +277,95 @@ public partial class FileTreeViewModel : ObservableObject
         }
         if (index < 0) return;
 
-        var wasExpanded = RootNodes[index].IsExpanded;
-        var tree = _fileService.BuildTree(root);
-        var node = ToNode(tree, null);
-        node.IsExpanded = wasExpanded;
-        RootNodes[index] = node;
+        Reconcile(RootNodes[index], _fileService.BuildTree(root));
+
+        // La selección pudo haberse borrado del disco (comando Eliminar, o un borrado externo).
+        // Dejarla apuntando a un nodo que ya no cuelga del árbol deja la TreeView sin nada
+        // marcado y a TargetDirectory() resolviendo contra una ruta muerta: el próximo "Nuevo
+        // archivo" iría a una carpeta que no existe.
+        if (SelectedNode is { } selected &&
+            RootNodes.All(r => FindNode(r, selected.FullPath) is null))
+        {
+            SelectedNode = null;
+        }
+
+        // Los nodos recién insertados nacen con IsVisible = true. Sin esto, crear un archivo con
+        // el buscador activo destapa el árbol entero como si no hubiera filtro.
+        var query = SearchQuery.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(query))
+            ApplyFilter(RootNodes[index], query);
+    }
+
+    /// <summary>
+    /// Hace que <paramref name="node"/> refleje a <paramref name="file"/> MUTANDO su lista de
+    /// hijos: reutiliza el nodo que ya existe para cada ruta que sigue estando, y solo crea los
+    /// que aparecieron.
+    ///
+    /// Preservar la INSTANCIA es todo el punto. <c>IsExpanded</c> e <c>IsSelected</c> están
+    /// bindeados TwoWay contra el nodo desde el ItemContainerStyle de la TreeView
+    /// (FileTreeView.xaml), así que mientras el objeto sobreviva sobreviven también la carpeta
+    /// abierta, la fila seleccionada y la posición del scroll. Reemplazar la sección entera
+    /// tiraba las tres cosas de una.
+    ///
+    /// La identidad es (ruta + si es carpeta). El tipo entra en la clave a propósito: borrar un
+    /// archivo y crear una carpeta con el mismo nombre debe dar un nodo NUEVO, no reciclar uno
+    /// que la plantilla dibujaría con el icono equivocado.
+    ///
+    /// Un renombre sí pierde el estado de esa rama: cambia la ruta, así que para la clave es un
+    /// nodo distinto. Es correcto — adivinar que dos rutas distintas "son el mismo" pide una
+    /// heurística que se equivocaría en los casos que importan.
+    /// </summary>
+    private static void Reconcile(VaultFileNode node, Models.VaultFile file)
+    {
+        var desired     = file.Children;
+        var desiredKeys = desired.Select(Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 1. Fuera los que ya no están en disco. De atrás hacia adelante: borrar por índice no
+        //    corre de lugar a los que todavía no se miraron.
+        for (var i = node.Children.Count - 1; i >= 0; i--)
+            if (!desiredKeys.Contains(Key(node.Children[i])))
+                node.Children.RemoveAt(i);
+
+        // 2. Recorrer el orden de disco dejando cada hijo en su posición. Tras el paso 1 todo
+        //    lo que queda existe, y las posiciones 0..i-1 ya están bien, así que el que falta
+        //    en la posición i solo puede estar de i en adelante.
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var key = Key(desired[i]);
+
+            if (i < node.Children.Count && KeyEquals(node.Children[i], key))
+            {
+                Reconcile(node.Children[i], desired[i]);
+                continue;
+            }
+
+            var existing = IndexOfKey(node.Children, key, from: i);
+            if (existing >= 0)
+            {
+                node.Children.Move(existing, i);
+                Reconcile(node.Children[i], desired[i]);
+            }
+            else
+            {
+                node.Children.Insert(i, ToNode(desired[i], node));
+            }
+        }
+    }
+
+    // El prefijo distingue carpeta de archivo para la MISMA ruta. Sin él, un archivo borrado y
+    // una carpeta creada con su nombre se tomarían por el mismo nodo.
+    private static string Key(VaultFileNode node)      => (node.IsDirectory ? "D:" : "F:") + node.FullPath;
+    private static string Key(Models.VaultFile file)   => (file.IsDirectory ? "D:" : "F:") + file.FullPath;
+
+    private static bool KeyEquals(VaultFileNode node, string key) =>
+        string.Equals(Key(node), key, StringComparison.OrdinalIgnoreCase);
+
+    private static int IndexOfKey(IList<VaultFileNode> children, string key, int from)
+    {
+        for (var i = from; i < children.Count; i++)
+            if (KeyEquals(children[i], key))
+                return i;
+        return -1;
     }
 
     /// <summary>Refreshes whichever open root owns <paramref name="path"/>, if any.</summary>
@@ -279,6 +373,24 @@ public partial class FileTreeViewModel : ObservableObject
     {
         if (_fileService.GetOwningRoot(path) is { } root)
             RefreshRoot(root);
+    }
+
+    /// <summary>
+    /// Abre la carpeta destino (y sus ancestros) después de un alta, para que lo recién creado
+    /// se vea. Con la reconciliación el resto del árbol ya no se toca, pero si el destino estaba
+    /// cerrado el archivo nuevo quedaría adentro, invisible — y el usuario no sabría si se creó.
+    /// </summary>
+    private void ExpandDirectory(string dir)
+    {
+        foreach (var root in RootNodes)
+        {
+            var node = FindNode(root, dir);
+            if (node is not { IsDirectory: true }) continue;
+
+            for (var ancestor = node; ancestor is not null; ancestor = ancestor.Parent)
+                ancestor.IsExpanded = true;
+            return;
+        }
     }
 
     /// <summary>

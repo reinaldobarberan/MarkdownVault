@@ -1,3 +1,7 @@
 .vs/MarkdownVault/FileContentIndex/2931be25-b095-436e-bbfe-db76f621c7b4.vsidx
 .vs/MarkdownVault/FileContentIndex/d5bc8eeb-544c-4135-bebe-b5fc20fa9df4.vsidx
 .vs/MarkdownVault/FileContentIndex/f7a0a486-85ee-4b61-9f69-519714082a8d.vsidx
+
+# Plugins excluidos del control de versiones
+plugins/LectorDocumentos/
+plugins/DictadoVoz/

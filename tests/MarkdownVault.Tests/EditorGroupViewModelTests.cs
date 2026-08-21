@@ -1,4 +1,5 @@
 using System.IO;
+using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
 using MarkdownVault.ViewModels;
@@ -196,13 +197,137 @@ public class EditorGroupViewModelTests : IDisposable
     }
 
     [Fact]
-    public void HandleDroppedFiles_InvalidFile_ShowsError()
+    public async Task HandleDroppedFiles_InvalidFile_ShowsError()
     {
-        var vm = CreateVm(); // no vault open, no file open -> CopyImageToAssets throws
+        var vm = CreateVm();
+        // Con documento abierto: el portón de "hay documento" queda satisfecho y la falla que se
+        // ejercita es la de verdad — copiar un origen que no existe.
+        await vm.OpenFileAsync(WriteFile("drop-host.md", "hola"));
 
         vm.HandleDroppedFiles(new[] { "photo.png" });
 
         Assert.Single(_dialogService.Errors);
+    }
+
+    // ─── Panel sin documento abierto: no se edita ────────────────────────────
+    // El editor aceptaba tecleo sin pestaña: OnContentChanged solo persiste en ActiveTab, así
+    // que ese texto vivía únicamente en el control de AvalonEdit y la primera apertura de
+    // archivo lo pisaba sin aviso ni marca de "sin guardar". Estos tests fijan el portón.
+
+    [Fact]
+    public void NoTabOpen_EditorIsReadOnly_AndEveryWritingCommandIsDisabled()
+    {
+        var vm = CreateVm();
+
+        Assert.False(vm.HasOpenDocument);
+        Assert.True(vm.IsEditorReadOnly);
+
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.False(vm.SaveAsCommand.CanExecute(null));
+        Assert.False(vm.InsertBoldCommand.CanExecute(null));
+        Assert.False(vm.InsertItalicCommand.CanExecute(null));
+        Assert.False(vm.InsertCodeCommand.CanExecute(null));
+        Assert.False(vm.InsertCodeBlockCommand.CanExecute("csharp"));
+        Assert.False(vm.InsertHeading1Command.CanExecute(null));
+        Assert.False(vm.InsertHeading2Command.CanExecute(null));
+        Assert.False(vm.InsertHeading3Command.CanExecute(null));
+        Assert.False(vm.InsertBulletListCommand.CanExecute(null));
+        Assert.False(vm.InsertNumberedListCommand.CanExecute(null));
+        Assert.False(vm.InsertLinkCommand.CanExecute(null));
+        Assert.False(vm.InsertInternalLinkCommand.CanExecute(null));
+        Assert.False(vm.InsertImageCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task OpeningFile_OpensTheGate_AndClosingTheLastTabShutsItAgain()
+    {
+        var vm = CreateVm();
+        await vm.OpenFileAsync(WriteFile("gate.md", "hola"));
+
+        Assert.True(vm.HasOpenDocument);
+        Assert.False(vm.IsEditorReadOnly);
+        Assert.True(vm.SaveCommand.CanExecute(null));
+        Assert.True(vm.InsertBoldCommand.CanExecute(null));
+
+        await vm.CloseTabCommand.ExecuteAsync(vm.ActiveTab);
+
+        Assert.False(vm.HasOpenDocument);
+        Assert.True(vm.IsEditorReadOnly);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.False(vm.InsertBoldCommand.CanExecute(null));
+    }
+
+    /// <summary>
+    /// El CanExecute correcto no alcanza: RelayCommand no observa nada, y sin este aviso los
+    /// botones de la barra se quedarían grises con un archivo ya abierto delante.
+    /// </summary>
+    [Fact]
+    public async Task OpeningFile_RaisesCanExecuteChanged_SoTheToolbarRefreshes()
+    {
+        var vm = CreateVm();
+        var boldRaised = 0;
+        var saveRaised = 0;
+        vm.InsertBoldCommand.CanExecuteChanged += (_, _) => boldRaised++;
+        vm.SaveCommand.CanExecuteChanged       += (_, _) => saveRaised++;
+
+        await vm.OpenFileAsync(WriteFile("notify.md", "hola"));
+
+        Assert.True(boldRaised > 0);
+        Assert.True(saveRaised > 0);
+    }
+
+    /// <summary>
+    /// HasFile mira CurrentFilePath, que un Guardar como deja seteado sin crear pestaña. Ese
+    /// estado —ruta sí, pestaña no— NO habilita la edición: es el que dejaba la barra de
+    /// pestañas vacía con el ViewModel convencido de tener un archivo abierto.
+    /// </summary>
+    [Fact]
+    public void PathWithoutTab_DoesNotCountAsAnOpenDocument()
+    {
+        var vm = CreateVm();
+        vm.CurrentFilePath = WriteFile("huerfano.md", "x");
+
+        Assert.True(vm.HasFile);
+        Assert.False(vm.HasOpenDocument);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void HandleDroppedFiles_NoDocumentOpen_InsertsNothingAndSaysWhy()
+    {
+        var vm = CreateVm();
+        var status = new List<string>();
+        vm.StatusSink = status.Add;
+        var inserted = false;
+        vm.InsertionRequested += (_, _) => inserted = true;
+
+        vm.HandleDroppedFiles(new[] { WriteFile("foto.png", "no importa el contenido") });
+
+        Assert.False(inserted);
+        Assert.Empty(_dialogService.Errors);   // no es un error: es que no hay a dónde escribir
+        Assert.Single(status);
+    }
+
+    /// <summary>
+    /// Los botones de plugin caen bajo el mismo portón. Sin pestaña, su escritura ya degradaba
+    /// (PinnedEditorContext → NoDocument), pero el botón seguía vivo: se apretaba y lo único
+    /// que pasaba era un mensaje en la barra de estado. Gris explica mejor.
+    /// </summary>
+    [Fact]
+    public async Task PluginToolbarButtons_AreDisabledUntilADocumentIsOpen()
+    {
+        _registry.AddCommand("test.plugin",
+            new PluginCommand { Id = "t.gate", Title = "T", Execute = _ => { } });
+        _registry.SetEnabled("test.plugin", true);
+
+        var vm   = CreateVm();   // el constructor arma la barra de plugins
+        var item = Assert.Single(vm.PluginToolbarItems);
+
+        Assert.False(item.Command!.CanExecute(null));
+
+        await vm.OpenFileAsync(WriteFile("con-doc.md", "hola"));
+
+        Assert.True(item.Command!.CanExecute(null));
     }
 
     // NOTE: HandleExternalChange_CleanTab_ReloadsFromDisk / _DirtyTab_KeepsInAppVersion moved

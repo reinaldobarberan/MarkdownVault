@@ -20,7 +20,7 @@ namespace MarkdownVault.Views;
 /// <see cref="EditorGroupViewModel"/> manually, registers the Markdown
 /// syntax highlighting definition on first load, and manages tab events.
 /// </summary>
-public partial class EditorView : UserControl
+public partial class EditorView : UserControl, IFindReplaceTarget
 {
     private EditorGroupViewModel? _vm;
     private bool             _updatingFromVm;
@@ -247,15 +247,24 @@ public partial class EditorView : UserControl
 
         if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
         {
+            // Esta rama SÍ se ejecuta desde que SaveCommand declara CanExecute. Mientras estuvo
+            // «siempre habilitado», el else era código muerto y Ctrl+S sin archivo abría el
+            // diálogo de Guardar como sobre un contenido que no pertenecía a ninguna pestaña.
             if (_vm.SaveCommand.CanExecute(null))
                 _vm.SaveCommand.Execute(null);
             else
                 MessageBox.Show(
-                    "No file is open. Open a file from the explorer to save it.",
-                    "Nothing to Save", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "No hay ningún archivo abierto. Abrí uno desde el explorador o creá uno nuevo con Ctrl+N.",
+                    "Nada que guardar", MessageBoxButton.OK, MessageBoxImage.Information);
             e.Handled = true;
             return;
         }
+
+        // Los atajos NO pasan por el CanExecute del botón: RelayCommand.Execute no lo consulta.
+        // Sin este corte, Ctrl+V/Ctrl+B/Ctrl+I seguirían escribiendo en el panel vacío por
+        // Document.Insert, que se saltea el IsReadOnly de AvalonEdit.
+        if (!_vm.HasOpenDocument) { base.OnPreviewKeyDown(e); return; }
+
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control
             && Clipboard.ContainsImage())
         {
@@ -269,6 +278,88 @@ public partial class EditorView : UserControl
         { _vm.InsertItalicCommand.Execute(null); e.Handled = true; return; }
 
         base.OnPreviewKeyDown(e);
+    }
+
+    // ─── Buscar / Reemplazar ─────────────────────────────────────────────────
+    // Implementación explícita de IFindReplaceTarget: el formulario de búsqueda opera
+    // sobre ESTE panel cuando es el que tiene el foco (ver MainWindow.ResolveFindTarget).
+    // Explícita, no pública, para no ensanchar la superficie de EditorView — nadie más
+    // debería andar moviendo la selección desde afuera.
+
+    /// <summary>True cuando este panel tiene una pestaña abierta sobre la cual buscar.
+    /// Delega en el VM: una sola definición de «hay documento» para búsqueda, edición y
+    /// habilitación de la barra.</summary>
+    internal bool HasOpenDocument => _vm?.HasOpenDocument == true;
+
+    /// <summary>Devuelve el foco al área de texto (al cerrar el formulario de búsqueda).</summary>
+    internal void FocusEditor() => TextEditor.Focus();
+
+    string IFindReplaceTarget.Text => TextEditor.Text;
+
+    // AvalonEdit ya devuelve el offset del cursor cuando la selección está vacía, pero se
+    // deja explícito: de este contrato depende que "buscar siguiente" arranque donde está
+    // el cursor y no en el offset 0.
+    int IFindReplaceTarget.SelectionStart =>
+        TextEditor.SelectionLength > 0 ? TextEditor.SelectionStart : TextEditor.CaretOffset;
+
+    int IFindReplaceTarget.SelectionLength => TextEditor.SelectionLength;
+
+    void IFindReplaceTarget.SelectAndReveal(int offset, int length) =>
+        SelectAndReveal(offset, length);
+
+    void IFindReplaceTarget.ReplaceAndReveal(int offset, int length, string replacement)
+    {
+        var doc = TextEditor.Document;
+        if (doc is null || offset < 0 || length < 0 || offset + length > doc.TextLength) return;
+
+        doc.Replace(offset, length, replacement);
+        // Deja seleccionado lo recién insertado: así la búsqueda siguiente arranca DESPUÉS
+        // del reemplazo y no vuelve a caer sobre él cuando el reemplazo contiene al patrón.
+        SelectAndReveal(offset, replacement.Length);
+    }
+
+    int IFindReplaceTarget.ApplyReplacements(IReadOnlyList<TextReplacement> replacements)
+    {
+        var doc = TextEditor.Document;
+        if (doc is null || replacements.Count == 0) return 0;
+
+        var applied = 0;
+
+        // BeginUpdate/EndUpdate agrupa TODO en una sola operación de deshacer: un
+        // "Reemplazar todo" de 200 coincidencias se revierte con un único Ctrl+Z.
+        doc.BeginUpdate();
+        try
+        {
+            // De la última a la primera: los offsets vienen calculados contra el texto
+            // original, así que editar de atrás hacia adelante no corre a las que faltan.
+            for (var i = replacements.Count - 1; i >= 0; i--)
+            {
+                var r = replacements[i];
+                if (r.Offset < 0 || r.Length < 0 || r.Offset + r.Length > doc.TextLength) continue;
+
+                doc.Replace(r.Offset, r.Length, r.Text);
+                applied++;
+            }
+        }
+        finally
+        {
+            doc.EndUpdate();
+        }
+
+        return applied;
+    }
+
+    /// <summary>Selecciona el tramo y hace scroll hasta su línea, sin robarle el foco al
+    /// formulario de búsqueda — el usuario sigue tipeando en la ventana flotante.</summary>
+    private void SelectAndReveal(int offset, int length)
+    {
+        var doc = TextEditor.Document;
+        if (doc is null || offset < 0 || length < 0 || offset + length > doc.TextLength) return;
+
+        TextEditor.Select(offset, length);
+
+        var location = doc.GetLocation(offset);
+        TextEditor.ScrollTo(location.Line, location.Column);
     }
 
     // ─── Clipboard image paste ────────────────────────────────────────────────

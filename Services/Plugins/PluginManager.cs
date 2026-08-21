@@ -21,18 +21,30 @@ public sealed class PluginManager
     private readonly string          _pluginsRoot;
     private readonly string          _pluginDataRoot;
 
+    /// <summary>Multiplexor de la barra de progreso (SDK 1.3.0). Null = sin barra
+    /// (pruebas): los plugins reciben scopes no-op y todo sigue funcionando.</summary>
+    private readonly PluginProgressCoordinator? _progress;
+
+    /// <summary>Destino del log de plugins. Default <see cref="NullPluginLogSink"/>
+    /// a propósito: una prueba no debe escribir en el %AppData% del usuario. La app
+    /// real enchufa el <see cref="FilePluginLogSink"/> en App.xaml.cs.</summary>
+    private readonly IPluginLogSink _logSink;
+
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNameCaseInsensitive = true };
 
     public PluginManager(
         PluginRegistry registry, IHostServices host, SettingsService settings,
-        string? pluginsRoot = null, string? pluginDataRoot = null)
+        string? pluginsRoot = null, string? pluginDataRoot = null,
+        PluginProgressCoordinator? progress = null, IPluginLogSink? logSink = null)
     {
         _registry       = registry;
         _host           = host;
         _settings       = settings;
         _pluginsRoot    = pluginsRoot ?? Path.Combine(AppContext.BaseDirectory, "Plugins");
         _pluginDataRoot = pluginDataRoot ?? Path.Combine(AppPaths.Root, "PluginData");
+        _progress       = progress;
+        _logSink        = logSink ?? NullPluginLogSink.Instance;
     }
 
     private readonly List<PluginDescriptor> _plugins = new();
@@ -191,7 +203,8 @@ public sealed class PluginManager
 
             var plugin  = (IPlugin)Activator.CreateInstance(pluginType)!;
             var storage = new PluginStorage(Path.Combine(_pluginDataRoot, id));
-            var ctx     = new HostPluginContext(descriptor.Metadata, _host, _registry, descriptor.FolderPath, storage);
+            var ctx     = new HostPluginContext(
+                descriptor.Metadata, _host, _registry, descriptor.FolderPath, storage, _progress, _logSink);
             plugin.Configure(ctx);
 
             if (plugin is IActivatablePlugin activatable)
@@ -219,6 +232,14 @@ public sealed class PluginManager
         if (!_loaded.TryGetValue(id, out var loaded))
             return;
 
+        // ANTES de OnDeactivatedAsync, no después: cerrar sus scopes CANCELA sus
+        // tokens, así el trabajo de fondo que el plugin tenga en vuelo (una descarga
+        // de 574 MB, una transcripción) recibe la señal de corte y OnDeactivatedAsync
+        // encuentra el terreno ya desarmado en vez de esperar a que termine solo.
+        // Además garantiza el invariante duro del contrato: al desactivar, NINGÚN
+        // scope del plugin sobrevive — ni siquiera uno que el plugin olvidó disponer.
+        _progress?.CloseAllFor(id);
+
         if (loaded.Plugin is IActivatablePlugin activatable)
         {
             try { activatable.OnDeactivatedAsync().GetAwaiter().GetResult(); }
@@ -244,6 +265,10 @@ public sealed class PluginManager
 
     private void UnloadAll()
     {
+        // Recarga completa: ningún scope de la tanda anterior puede sobrevivir, o la
+        // barra quedaría mostrando el trabajo de un plugin que ya no está cargado.
+        _progress?.CloseAll();
+
         foreach (var loaded in _loaded.Values)
             loaded.Alc.Unload();
         _loaded.Clear();

@@ -12,6 +12,11 @@ internal sealed class FakeHost : IHostServices
     public Task<string> ReadFileAsync(string relativePath) => Task.FromResult(string.Empty);
     public void ShowStatus(string message) { }
     public void OpenVaultFile(string relativePath) { }
+
+    // SDK 1.3.0: agregar un miembro a IHostServices es aditivo para quien la CONSUME
+    // (los plugins) pero obliga a todo IMPLEMENTADOR — el host y este doble — a
+    // cubrirlo. NoOpProgressScope existe justamente para este caso.
+    public IProgressScope BeginProgress(string title) => NoOpProgressScope.Instance;
 }
 
 /// <summary>Scripted <see cref="IDialogService"/> double: no real dialogs, records every call.</summary>

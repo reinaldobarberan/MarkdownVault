@@ -216,6 +216,11 @@
                 <Border Height="1" Background="{DynamicResource BorderBrush}"/>
                 <Button Style="{StaticResource GraphZoomButtonStyle}"
                         Content="&#x2299;" ToolTip="Centrar" Click="Reset_Click"/>
+                <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+                <Button Style="{StaticResource GraphZoomButtonStyle}"
+                        Content="&#x1F4CC;" FontFamily="Segoe UI Emoji" FontSize="12"
+                        ToolTip="Liberar nodos fijados (clic derecho sobre un nodo libera solo ese)"
+                        Click="Unpin_Click"/>
             </StackPanel>
         </Border>
     </Grid>

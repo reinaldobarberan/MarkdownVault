@@ -18,15 +18,20 @@
   <ItemGroup>
     <ProjectReference Include="..\..\MarkdownVault.csproj" />
     <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj" />
-    <!-- Direct reference: Eisenhower's TaskStore/capture logic is pure C# (no WPF,
-         no I/O), so it is unit-tested by referencing the assembly directly — unlike
-         TestFixture below, it doesn't need ALC-collectibility via reflection load. -->
-    <ProjectReference Include="..\..\plugins\Eisenhower\MarkdownVault.Plugin.Eisenhower.csproj" />
+    <!-- NO hay ProjectReference a NINGÚN plugin, a propósito. Un plugin es OPCIONAL:
+         si estos tests lo referenciaran, borrar el plugin del repo dejaría al proyecto
+         de tests del host sin compilar y se caerían tests que no tienen nada que ver
+         con él. Cada plugin lleva ahora su propio proyecto de tests, dentro de su
+         carpeta (plugins\<Plugin>\tests\). Los tests de integración de esta carpeta
+         que necesitan un plugin REAL (CopyButton, Mermaid, Eisenhower) lo cargan por
+         RUTA desde bin\<Config>\net8.0-windows\Plugins — es decir, dependen de un
+         build de la SOLUCIÓN, no de una referencia de compilación. -->
     <!-- Build-and-copy only: MarkdownVault.Plugin.TestFixture.dll lands next to
          MarkdownVault.Tests.dll. Its types are never referenced directly in IL here
          (see Collectible_context_with_wpf_window_and_filestream_is_unloaded_after_gc) —
          PluginManager.LoadUnloadWithWorkForTest loads it by path + reflection so this
-         ProjectReference doesn't defeat ALC collectibility. -->
+         ProjectReference doesn't defeat ALC collectibility. Es del MECANISMO DE CARGA
+         del host, no de ningún plugin del catálogo: se queda. -->
     <ProjectReference Include="..\Plugin.TestFixture\MarkdownVault.Plugin.TestFixture.csproj" />
   </ItemGroup>
 

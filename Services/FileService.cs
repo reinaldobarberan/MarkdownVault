@@ -308,6 +308,23 @@ public class FileService : IDisposable
         RecordSelfWrite(path);
     }
 
+    /// <summary>
+    /// Hermana SÍNCRONA de <see cref="WriteFileAsync"/>, con los mismos guardas de auto-escritura.
+    ///
+    /// Existe por UN solo llamador: el vaciado de pestañas sucias al cerrar la ventana.
+    /// <c>Window.Closing</c> es sincrónico —cancelar el cierre exige decidir ANTES de volver— y
+    /// bloquear ahí sobre la versión async (<c>.GetAwaiter().GetResult()</c>) se traba: el
+    /// <c>await</c> de <see cref="File.WriteAllTextAsync"/> quiere volver al hilo de UI, que es
+    /// justamente el que estaría bloqueado esperándolo. Escribir sincrónico evita el interbloqueo
+    /// en el único momento donde perder el contenido ya no tiene vuelta atrás.
+    /// </summary>
+    public void WriteFile(string path, string content)
+    {
+        BeginSelfWrite(path);
+        File.WriteAllText(path, content, System.Text.Encoding.UTF8);
+        RecordSelfWrite(path);
+    }
+
     // ─── CRUD ─────────────────────────────────────────────────────────────────
 
     /// <summary>Creates an empty file; appends .md if no supported extension is present.</summary>

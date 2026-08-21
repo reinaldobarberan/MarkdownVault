@@ -12,16 +12,22 @@ internal sealed class HostPluginContext : IPluginContext
 {
     private readonly PluginRegistry _registry;
     private readonly string         _baseDir;
+    private readonly IPluginLogSink _logSink;
 
     public HostPluginContext(
         PluginMetadata metadata, IHostServices host, PluginRegistry registry, string baseDir,
-        IPluginStorage storage)
+        IPluginStorage storage,
+        PluginProgressCoordinator? progress = null, IPluginLogSink? logSink = null)
     {
         Metadata  = metadata;
-        Host      = host;
+        // El plugin NO recibe la fachada compartida sino una vista decorada que
+        // estampa su id en los scopes de progreso — así el host puede cerrarlos
+        // todos al desactivarlo (ver PluginHostServices y §9 de la guía).
+        Host      = new PluginHostServices(host, metadata.Id, progress);
         _registry = registry;
         _baseDir  = baseDir;
         Storage   = storage;
+        _logSink  = logSink ?? NullPluginLogSink.Instance;
     }
 
     public IHostServices  Host     { get; }
@@ -51,10 +57,21 @@ internal sealed class HostPluginContext : IPluginContext
     public void AddCommand(PluginCommand command)          => _registry.AddCommand(Metadata.Id, command);
     public void AddCommandGroup(PluginCommandGroup group)  => _registry.AddCommandGroup(Metadata.Id, group);
     public void AddPanel(PluginPanel panel)                => _registry.AddPanel(Metadata.Id, panel);
+    public void AddListSetting(PluginListSetting setting)  => _registry.AddListSetting(Metadata.Id, setting);
     public void OnVaultEvent(Action<VaultEvent> h)    => _registry.AddVaultHandler(Metadata.Id, h);
 
+    /// <summary>
+    /// Va a DOS destinos. <c>Debug.WriteLine</c> se conserva (cómodo con el
+    /// depurador enganchado) pero por sí solo era un pozo: no se ve sin depurador
+    /// y desaparece entero en Release por <c>[Conditional("DEBUG")]</c>. El sumidero
+    /// a archivo (<see cref="FilePluginLogSink"/>, %AppData%/MarkdownVault/logs/)
+    /// es el que hace el log realmente legible. Nunca lanza hacia el plugin.
+    /// </summary>
     public void Log(string message)
-        => System.Diagnostics.Debug.WriteLine($"[plugin:{Metadata.Id}] {message}");
+    {
+        System.Diagnostics.Debug.WriteLine($"[plugin:{Metadata.Id}] {message}");
+        _logSink.Write(Metadata.Id, message);
+    }
 
     // Reutiliza el cableado existente PluginRegistry.Changed -> App.xaml.cs
     // Dispatcher.Invoke(Editor.RefreshPreviewFromPlugins()); no hay mecanismo paralelo.

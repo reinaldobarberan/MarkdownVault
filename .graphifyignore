@@ -1,0 +1,4 @@
+# Artefactos de compilación y caché de IDE — no son código fuente.
+bin/
+obj/
+.vs/

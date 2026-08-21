@@ -4,6 +4,8 @@
 **Mode**: Standard (project convention: tests-last, not Strict TDD)
 **Date**: 2026-08-14
 
+> **Partially superseded (2026-08-14):** Two of the warnings below were closed in the post-verify cleanup, before archiving — **WARNING #1** (wikilink-autocomplete regression test) and **WARNING #5** (stale `AGENTS.md`). Both are marked ✅ CLOSED inline where they appear. WARNINGs #2, #3 and #4 remain open and were accepted as low-priority follow-ups. See `archive-report.md` for the final state of this change.
+
 ---
 
 ## Completeness
@@ -108,11 +110,15 @@ No deviations found.
 None. Build is clean, all 320 tests pass, and every spec requirement has real, correct implementation confirmed by direct code reading.
 
 **WARNING** (should fix):
-1. **Wikilink-autocomplete vault scoping has no regression test.** This is the gap previously flagged for this change. The fix is correctly implemented (`EditorGroupViewModel.InsertInternalLink` now scopes to `GetOwningRoot(CurrentFilePath)` before listing files for the picker), but nothing in the test suite proves it with two open vaults — a future refactor could silently reintroduce the cross-vault leak with no test to catch it. Recommend adding a test (either at `LinkPickerDialog`/`EditorGroupViewModel` level, or an integration test asserting `InsertInternalLinkCommand` only surfaces the owning vault's files when two vaults are open).
+1. ✅ **CLOSED in post-verify cleanup** — regression test `InsertInternalLink_TwoVaultsOpen_CandidatesScopedToOwningVault` added to `EditorGroupViewModelTests.cs`. Original finding preserved below.
+
+   **Wikilink-autocomplete vault scoping has no regression test.** This is the gap previously flagged for this change. The fix is correctly implemented (`EditorGroupViewModel.InsertInternalLink` now scopes to `GetOwningRoot(CurrentFilePath)` before listing files for the picker), but nothing in the test suite proves it with two open vaults — a future refactor could silently reintroduce the cross-vault leak with no test to catch it. Recommend adding a test (either at `LinkPickerDialog`/`EditorGroupViewModel` level, or an integration test asserting `InsertInternalLinkCommand` only surfaces the owning vault's files when two vaults are open).
 2. **"New File Default Target" spec requirement has no test.** `FileTreeViewModel.TargetDirectory()`'s fallback to the first open root (`VaultRoots[0]`) is correct by code inspection but entirely unverified by the suite.
 3. **Vault-scoped image paste is only tested at the `FileService` layer**, not through `EditorGroupViewModel.InsertImage`/`HandleDroppedFiles` with two open vaults. Low risk (the call sites are simple pass-throughs, verified by reading), but not proven at runtime.
 4. **Graph-follows-focus wiring (`GraphViewModel.BuildIfRootChangedAsync`, `MainViewModel.SyncGraphActiveFile`) has no unit test.** This matches `design.md`'s own Testing Strategy table, which explicitly assigns this to the Manual layer — so it's a documented choice, not an oversight, but worth surfacing since it's a spec requirement ("Graph Scoped To Focused Vault").
-5. **`AGENTS.md` (project context doc) is stale** — it still describes the pre-multi-vault single-`VaultRoot` architecture and doesn't mention `VaultRoots`, `GetOwningRoot`, or the multi-vault workspace at all. Not part of this change's scope per the tasks/design, but worth a follow-up doc update so the project's own source-of-truth context file doesn't contradict the shipped architecture.
+5. ✅ **CLOSED in post-verify cleanup** — `AGENTS.md` was updated to describe the multi-root architecture (it now documents `VaultRoots`, `GetOwningRoot`, `OpenVaultPaths` and the one-time `VaultPathsMigrated` migration). Original finding preserved below.
+
+   **`AGENTS.md` (project context doc) is stale** — it still describes the pre-multi-vault single-`VaultRoot` architecture and doesn't mention `VaultRoots`, `GetOwningRoot`, or the multi-vault workspace at all. Not part of this change's scope per the tasks/design, but worth a follow-up doc update so the project's own source-of-truth context file doesn't contradict the shipped architecture.
 
 **SUGGESTION** (nice to have):
 1. Consider an integration-level test through the real `MainViewModel` (not just `FileService`/`VaultsViewModel` in isolation) that opens two vaults, opens a tab from each, closes one vault via `CreateVaultsViewModel().ToggleOpenCommand`, and asserts both tabs are still present in their respective groups and still editable. This would tighten the "Close Toggle Behavior" scenarios beyond the manual smoke test without needing WPF/WebView2.
