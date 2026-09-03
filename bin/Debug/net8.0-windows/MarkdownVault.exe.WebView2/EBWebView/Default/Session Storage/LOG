@@ -1,3 +1,2 @@
-2026/08/11-19:47:05.684 dbc Reusing MANIFEST C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default\Session Storage/MANIFEST-000001
-2026/08/11-19:47:05.685 dbc Recovering log #3
-2026/08/11-19:47:05.687 dbc Reusing old log C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default\Session Storage/000003.log 
+2026/09/03-10:05:36.850 a068 Creating DB C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default\Session Storage since it was missing.
+2026/09/03-10:05:36.867 a068 Reusing MANIFEST C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\bin\Debug\net8.0-windows\MarkdownVault.exe.WebView2\EBWebView\Default\Session Storage/MANIFEST-000001

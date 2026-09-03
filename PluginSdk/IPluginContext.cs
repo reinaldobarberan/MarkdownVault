@@ -54,9 +54,33 @@ public interface IPluginContext
 /// </summary>
 public interface IHostServices
 {
+    /// <summary>
+    /// La raíz de vault SUPERIOR (la primera abierta). Sirve para el caso de una
+    /// sola raíz, que es el habitual. Con varias raíces abiertas NO alcanza: usá
+    /// <see cref="GetOwningRoot"/>.
+    /// </summary>
     string? VaultRoot { get; }
+
     string? ActiveFilePath { get; }
     bool    IsDarkTheme { get; }
+
+    /// <summary>
+    /// La raíz de vault que CONTIENE <paramref name="path"/> —el prefijo más largo
+    /// cuando hay raíces anidadas o superpuestas— o <c>null</c> si la ruta queda
+    /// afuera de toda raíz abierta (o si no hay ninguna). Nunca lanza (SDK 1.5.0).
+    ///
+    /// Por qué existe, y por qué <see cref="VaultRoot"/> no alcanza: la vista previa
+    /// mapea <c>vault.local</c> a la raíz que posee la NOTA ACTIVA, no a la primera
+    /// abierta. Un plugin que arme una ruta relativa contra <see cref="VaultRoot"/>
+    /// escribe un destino roto en cuanto hay dos raíces y una cuelga de la otra: el
+    /// enlace se ve bien y no resuelve. El host ya usaba internamente sobrecargas
+    /// conscientes de la raíz (ver <c>FileService.BuildImageMarkdown(root, …)</c>);
+    /// esto expone lo mismo del lado de los plugins.
+    ///
+    /// De solo lectura, como todo lo demás de esta interfaz: responde una pregunta
+    /// sobre rutas ya abiertas, no da acceso a nada nuevo.
+    /// </summary>
+    string? GetOwningRoot(string path);
 
     /// <summary>Lee un archivo del vault por su ruta relativa. Lanza si escapa del vault.</summary>
     Task<string> ReadFileAsync(string relativePath);

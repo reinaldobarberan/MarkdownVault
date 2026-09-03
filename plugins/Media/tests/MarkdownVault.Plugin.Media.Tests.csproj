@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests del plugin Media. Vive DENTRO de la carpeta del plugin y NO referencia
+       MarkdownVault.csproj a propósito: un plugin es OPCIONAL, así que sus tests no
+       pueden ser una dependencia de compilación del host ni al revés. Borrar
+       plugins/Media/ entero (más sus entradas del .sln) tiene que dejar el resto del
+       repo compilando. Mismo reparto que los tests de Eisenhower. -->
+
+  <PropertyGroup>
+    <!-- net8.0-windows porque el csproj del plugin lo es (UseWPF, por el OpenFileDialog).
+         El FrameworkReference de WPF llega solo por el ProjectReference. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>MarkdownVault.Plugin.Media.Tests</AssemblyName>
+    <RootNamespace>MarkdownVault.Plugin.Media.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"        Version="17.11.1" />
+    <PackageReference Include="xunit"                         Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio"     Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ÚNICA referencia de proyecto: el propio plugin, que ya arrastra PluginSdk. -->
+    <ProjectReference Include="..\MarkdownVault.Plugin.Media.csproj" />
+    <!-- Markdig: MediaRenderExtensionTests arma un pipeline Markdig REAL. Acá SÍ hace
+         falta el runtime del paquete (sin ExcludeAssets): en el plugin se excluye
+         porque el host provee el DLL y lo comparte por el ALC, pero este proceso de
+         tests NO es el host — si el DLL no se copia junto al .dll de tests, el
+         pipeline revienta al ejecutarse. Misma versión que el plugin. -->
+    <PackageReference Include="Markdig" Version="1.1.2" />
+  </ItemGroup>
+
+</Project>

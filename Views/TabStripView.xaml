@@ -1,6 +1,9 @@
-<UserControl x:Class="MarkdownVault.Views.TabStripView"
+﻿<UserControl x:Class="MarkdownVault.Views.TabStripView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MouseMove="Strip_MouseMove"
+             MouseLeftButtonUp="Strip_MouseLeftButtonUp"
+             LostMouseCapture="Strip_LostMouseCapture">
 
     <!-- ── Tab strip (extracted from EditorView, task 3.10 → reusable so it can appear
          both inside each editor pane AND above the preview in Solo visor). Its ambient
@@ -19,7 +22,7 @@
                     <Setter Property="Height" Value="3"/>
                 </Style>
             </ScrollViewer.Resources>
-            <ItemsControl ItemsSource="{Binding OpenTabs}">
+            <ItemsControl x:Name="TabsHost" ItemsSource="{Binding OpenTabs}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal"/>
@@ -35,6 +38,9 @@
                                 Padding="10,5,4,5"
                                 Cursor="Hand"
                                 MinWidth="80" MaxWidth="200"
+                                ToolTip="{Binding FilePath}"
+                                ToolTipService.InitialShowDelay="600"
+                                ToolTipService.ShowDuration="20000"
                                 MouseLeftButtonDown="Tab_MouseLeftButtonDown"
                                 MouseDown="Tab_MouseDown"
                                 Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">

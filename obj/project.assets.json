@@ -83,7 +83,7 @@
           "Microsoft.WindowsDesktop.App"
         ]
       },
-      "MarkdownVault.PluginSdk/1.0.0": {
+      "MarkdownVault.PluginSdk/1.5.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v8.0",
         "compile": {
@@ -295,7 +295,7 @@
         "quicker.avalonedit.nuspec"
       ]
     },
-    "MarkdownVault.PluginSdk/1.0.0": {
+    "MarkdownVault.PluginSdk/1.5.0": {
       "type": "project",
       "path": "PluginSdk/MarkdownVault.PluginSdk.csproj",
       "msbuildProject": "PluginSdk/MarkdownVault.PluginSdk.csproj"
@@ -305,7 +305,7 @@
     "net8.0-windows7.0": [
       "CommunityToolkit.Mvvm >= 8.4.2",
       "Markdig >= 1.1.2",
-      "MarkdownVault.PluginSdk >= 1.0.0",
+      "MarkdownVault.PluginSdk >= 1.5.0",
       "Microsoft.Web.WebView2 >= 1.0.3912.50",
       "Microsoft.Xaml.Behaviors.Wpf >= 1.1.135",
       "Quicker.AvalonEdit >= 6.3.1"
@@ -360,7 +360,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0-windows7.0": {
@@ -406,7 +406,7 @@
             "privateAssets": "none"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.317/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

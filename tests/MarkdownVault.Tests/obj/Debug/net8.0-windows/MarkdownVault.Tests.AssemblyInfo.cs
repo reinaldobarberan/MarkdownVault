@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MarkdownVault.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+213cfcd602e6848ede6818f85ab946612ebc8535")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3b1ccd619c18b9da908796ffbfc81a467ff7a5a9")]
 [assembly: System.Reflection.AssemblyProductAttribute("MarkdownVault.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MarkdownVault.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

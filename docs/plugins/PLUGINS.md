@@ -19,6 +19,7 @@ Este documento explica el sistema desde el punto de vista del **usuario**: qué 
 | [Resaltado de sintaxis](#resaltado-de-sintaxis) | Colorea el código de los bloques en la vista previa. |
 | [Botón de copiar](#botón-de-copiar) | Agrega un botón para copiar el contenido de cada bloque de código. |
 | [Callouts](#callouts) | Alertas estilo Obsidian con título en línea. |
+| [Video y Audio](#video-y-audio) | Reproduce los videos y audios del vault dentro de la nota, con controles. |
 | [Eisenhower](#eisenhower) | Matriz de tareas urgente/importante con ventana dedicada. Ver guía aparte: [`EISENHOWER.md`](EISENHOWER.md). |
 | [Lector de Documentos](#lector-de-documentos) | Lee el documento en voz alta con Piper, sin internet. Ver guía aparte: [`LECTOR-DOCUMENTOS.md`](LECTOR-DOCUMENTOS.md). |
 | [Dictado y Transcripción de Voz](#dictado-y-transcripción-de-voz) | Transcribe un audio o dicta en vivo por micrófono con whisper.cpp, sin internet. Ver guía aparte: [`DICTADO-VOZ.md`](DICTADO-VOZ.md). |
@@ -63,6 +64,51 @@ Agrega estilo visual a las alertas tipo Obsidian y soporta la variante con **tí
 ```
 
 Tipos disponibles: `note`, `tip`, `warning`, `important`, `caution` (y los que soporte la versión instalada). Cada uno tiene su propio color e icono en la vista previa.
+
+### Video y Audio
+
+Convierte en un **reproductor con controles** los archivos de video y audio que estén dentro del vault. Se usa la misma sintaxis de siempre para insertar una imagen — no hay que aprender nada nuevo:
+
+```markdown
+![](attachments/demo.mp4)
+![[nota-de-voz.opus]]
+![Explicación del módulo de pagos](attachments/demo.webm)
+```
+
+El texto entre corchetes, si lo ponés, es lo que se muestra cuando el archivo no se puede reproducir.
+
+**No hace falta escribirlo a mano.** En la barra de herramientas aparece el botón **🎬 Medios**, con dos opciones: *Insertar video…* e *Insertar audio…*. Cada una abre el explorador de archivos, arranca en tu carpeta `attachments/` y **solo te ofrece los formatos que la lista de abajo dice que se pueden reproducir**. Elegís el archivo y el enlace se escribe solo, con la ruta ya resuelta.
+
+Si tenías texto seleccionado cuando apretaste el botón, ese texto pasa a ser la descripción del medio y el enlace lo reemplaza.
+
+> [!note]
+> El archivo tiene que estar **dentro del vault**. Si elegís uno de afuera, el plugin te avisa en la barra de estado en vez de insertar un enlace que se vería bien y no reproduciría nada: la vista previa solo sabe servir archivos del vault. Copialo a `attachments/` y volvé a elegirlo.
+
+Un enlace **sin** el signo de admiración sigue siendo un enlace: `[mirá el clip](demo.mp4)` abre el archivo, no lo incrusta. La diferencia es deliberada.
+
+**Sigue reproduciéndose mientras editás.** La vista previa se rearma con cada tecla que tocás; el plugin se acuerda del segundo exacto, del volumen y de si estaba andando, y lo restaura. No vas a perder el punto donde estabas por escribir un párrafo al lado.
+
+**Formatos.** Por defecto entran los que el motor de la vista previa reproduce de verdad:
+
+| Tipo | Extensiones |
+| ---- | ----------- |
+| Video | `.mp4` `.m4v` `.webm` `.ogv` `.mov` |
+| Audio | `.mp3` `.m4a` `.aac` `.wav` `.ogg` `.oga` `.opus` `.flac` `.weba` |
+
+La lista es **editable** desde la ventana de **Complementos**: seleccioná *Video y Audio* y vas a ver una tabla de dos columnas (*Extensión* / *Tipo*). Agregás la extensión, escribís `video` o `audio` al lado, y el cambio se aplica en el acto — no hace falta reiniciar ni recompilar. Se guarda en `formatos.json`, dentro de la carpeta del plugin.
+
+> [!warning]
+> `.mkv`, `.avi` y `.wmv` **no se reproducen**, por más que los agregues a la lista. No es una limitación del plugin: el motor de la vista previa no abre esos contenedores. Si agregás uno, el aviso debajo de la tabla te lo dice. La salida es convertir el archivo a `.mp4` (H.264) o `.webm`.
+>
+> Con `.mov` pasa algo parecido a medias: los que salen de un teléfono o de QuickTime andan; los exportados con códecs de edición (ProRes, HEVC) no.
+
+**El archivo tiene que estar dentro del vault.** No es una decisión del plugin: la vista previa sirve los archivos por un host virtual (`vault.local`) mapeado a la carpeta del vault que contiene la nota que estás editando, y a ninguna otra. Un video en `C:\Videos\` no se sirve, y apuntarle con `file:///` tampoco funciona — la página de la vista previa corre en un origen sin permiso para leer el disco.
+
+Si tenés videos afuera, hoy la salida es copiarlos adentro (o abrir esa carpeta como un vault más, con lo cual las notas que vivan **ahí** los ven).
+
+Con **varios vaults abiertos**, el enlace se calcula contra el que contiene la nota activa —incluso si un vault está adentro de otro— así que el botón escribe la ruta correcta en todos los casos.
+
+**Solo archivos locales.** Una dirección de internet (`https://…`) se deja como estaba, a propósito: la vista previa no sale a la red sin que se lo pidan. Los videos de YouTube todavía no están soportados.
 
 ### Eisenhower
 

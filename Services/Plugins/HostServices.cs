@@ -42,6 +42,16 @@ public sealed class HostServices : IHostServices
     public string? ActiveFilePath => ActiveFileProvider?.Invoke();
     public bool    IsDarkTheme    => DarkThemeProvider?.Invoke() ?? false;
 
+    /// <summary>
+    /// SDK 1.5.0. Delega tal cual en <see cref="FileService.GetOwningRoot"/>, que ya
+    /// resuelve el prefijo más largo con raíces anidadas y nunca lanza — la MISMA
+    /// función con la que MainWindow decide a qué carpeta mapear <c>vault.local</c>.
+    /// Que sea la misma es el punto: un plugin que arme rutas con esto no se puede
+    /// desincronizar de lo que la vista previa va a resolver.
+    /// </summary>
+    public string? GetOwningRoot(string path) =>
+        string.IsNullOrWhiteSpace(path) ? null : _fileService.GetOwningRoot(path);
+
     public Task<string> ReadFileAsync(string relativePath)
     {
         var root = _fileService.VaultRoot;

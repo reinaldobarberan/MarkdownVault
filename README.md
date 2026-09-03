@@ -26,6 +26,7 @@ Editor de Markdown de escritorio al estilo **Obsidian**, construido con **WPF y 
 - **Pestañas** de archivos, explorador lateral con búsqueda, y modos de vista (solo editor / editor + preview / solo visor).
 - **Temas** claro/oscuro (estilo VS Code) con persistencia, incluida la barra de título nativa.
 - **Imágenes**: arrastrar y soltar, y pegar capturas de pantalla (Ctrl+V) directo a `attachments/`.
+- **Video y audio** del vault reproducidos dentro de la nota, con la misma sintaxis de las imágenes (`![](clip.mp4)`), con botón de barra para elegir el archivo y sin perder el punto de reproducción mientras editás.
 - **Auto-guardado** y exportación de la vista previa a PNG.
 
 ## Complementos (Plugins)
@@ -43,6 +44,7 @@ Plugins incluidos:
 | **Mermaid** | Diagramas de flujo, secuencia, clases, estados, Gantt, pie, mindmap y timeline en bloques ` ```mermaid `. |
 | **Resaltado de sintaxis** | Colorea el código de los bloques en la vista previa (highlight.js). |
 | **Callouts** | Alertas estilo Obsidian (`> [!note] Mi título`, con título en línea) con estilo propio. |
+| **Video y Audio** | Reproduce los videos y audios del vault dentro de la nota: `![](clip.mp4)` y `![[nota.opus]]` pasan a ser un reproductor con controles. Botón de barra para elegir el archivo, y formatos editables. |
 | **Eisenhower** | Matriz de tareas urgente/importante, con ventana dedicada y grilla opcional embebible con un bloque `` ```eisenhower ``. |
 | **Lector de Documentos** | Lee el documento (o la selección) en voz alta con Piper: síntesis local, sin internet ni cuentas. |
 | **Dictado y Transcripción de Voz** | Transcribe un audio o dicta en vivo por micrófono con whisper.cpp: reconocimiento local, sin internet ni cuentas. |
@@ -75,7 +77,7 @@ MarkdownVault/
 │                    # (descubrimiento, carga aislada vía AssemblyLoadContext, ciclo de vida)
 ├── PluginSdk/      # El contrato compartido host↔plugins: IPlugin, IPluginContext, IHostServices, IPluginStorage…
 ├── Resources/      # Temas (DarkTheme / LightTheme)
-└── plugins/        # Plugins de primera parte (fuente): Mermaid, Highlight, Callouts, Eisenhower,
+└── plugins/        # Plugins de primera parte (fuente): Mermaid, Highlight, Callouts, Media, Eisenhower,
                     # LectorDocumentos (incluye runtime/ con piper.exe y las voces),
                     # DictadoVoz (incluye runtime/ con whisper-server.exe y ffmpeg.exe)
 ```

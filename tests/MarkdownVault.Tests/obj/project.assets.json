@@ -493,7 +493,7 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "8.4.2",
           "Markdig": "1.1.2",
-          "MarkdownVault.PluginSdk": "1.0.0",
+          "MarkdownVault.PluginSdk": "1.5.0",
           "Microsoft.Web.WebView2": "1.0.3912.50",
           "Microsoft.Xaml.Behaviors.Wpf": "1.1.135",
           "Quicker.AvalonEdit": "6.3.1"
@@ -503,23 +503,6 @@
         },
         "runtime": {
           "bin/placeholder/MarkdownVault.dll": {}
-        },
-        "frameworkReferences": [
-          "Microsoft.WindowsDesktop.App.WPF"
-        ]
-      },
-      "MarkdownVault.Plugin.Eisenhower/1.0.0": {
-        "type": "project",
-        "framework": ".NETCoreApp,Version=v8.0",
-        "dependencies": {
-          "Markdig": "1.1.2",
-          "MarkdownVault.PluginSdk": "1.0.0"
-        },
-        "compile": {
-          "bin/placeholder/MarkdownVault.Plugin.Eisenhower.dll": {}
-        },
-        "runtime": {
-          "bin/placeholder/MarkdownVault.Plugin.Eisenhower.dll": {}
         },
         "frameworkReferences": [
           "Microsoft.WindowsDesktop.App.WPF"
@@ -538,7 +521,7 @@
           "Microsoft.WindowsDesktop.App.WPF"
         ]
       },
-      "MarkdownVault.PluginSdk/1.0.0": {
+      "MarkdownVault.PluginSdk/1.5.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v8.0",
         "compile": {
@@ -1203,17 +1186,12 @@
       "path": "../../MarkdownVault.csproj",
       "msbuildProject": "../../MarkdownVault.csproj"
     },
-    "MarkdownVault.Plugin.Eisenhower/1.0.0": {
-      "type": "project",
-      "path": "../../plugins/Eisenhower/MarkdownVault.Plugin.Eisenhower.csproj",
-      "msbuildProject": "../../plugins/Eisenhower/MarkdownVault.Plugin.Eisenhower.csproj"
-    },
     "MarkdownVault.Plugin.TestFixture/1.0.0": {
       "type": "project",
       "path": "../Plugin.TestFixture/MarkdownVault.Plugin.TestFixture.csproj",
       "msbuildProject": "../Plugin.TestFixture/MarkdownVault.Plugin.TestFixture.csproj"
     },
-    "MarkdownVault.PluginSdk/1.0.0": {
+    "MarkdownVault.PluginSdk/1.5.0": {
       "type": "project",
       "path": "../../PluginSdk/MarkdownVault.PluginSdk.csproj",
       "msbuildProject": "../../PluginSdk/MarkdownVault.PluginSdk.csproj"
@@ -1222,9 +1200,8 @@
   "projectFileDependencyGroups": {
     "net8.0-windows7.0": [
       "MarkdownVault >= 1.0.0",
-      "MarkdownVault.Plugin.Eisenhower >= 1.0.0",
       "MarkdownVault.Plugin.TestFixture >= 1.0.0",
-      "MarkdownVault.PluginSdk >= 1.0.0",
+      "MarkdownVault.PluginSdk >= 1.5.0",
       "Microsoft.NET.Test.Sdk >= 17.11.1",
       "xunit >= 2.9.2",
       "xunit.runner.visualstudio >= 2.8.2"
@@ -1269,9 +1246,6 @@
             "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\PluginSdk\\MarkdownVault.PluginSdk.csproj": {
               "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\PluginSdk\\MarkdownVault.PluginSdk.csproj"
             },
-            "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\plugins\\Eisenhower\\MarkdownVault.Plugin.Eisenhower.csproj": {
-              "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\plugins\\Eisenhower\\MarkdownVault.Plugin.Eisenhower.csproj"
-            },
             "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\tests\\Plugin.TestFixture\\MarkdownVault.Plugin.TestFixture.csproj": {
               "projectPath": "C:\\MIs Archivos\\Agente\\Documentacion\\MarkdownVaultGit\\tests\\Plugin.TestFixture\\MarkdownVault.Plugin.TestFixture.csproj"
             }
@@ -1288,7 +1262,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0-windows7.0": {
@@ -1323,7 +1297,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.317/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

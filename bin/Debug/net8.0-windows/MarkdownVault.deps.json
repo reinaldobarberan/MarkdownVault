@@ -10,7 +10,7 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "8.4.2",
           "Markdig": "1.1.2",
-          "MarkdownVault.PluginSdk": "1.0.0",
+          "MarkdownVault.PluginSdk": "1.5.0",
           "Microsoft.Web.WebView2": "1.0.3912.50",
           "Microsoft.Xaml.Behaviors.Wpf": "1.1.135",
           "Quicker.AvalonEdit": "6.3.1",
@@ -73,11 +73,11 @@
           }
         }
       },
-      "MarkdownVault.PluginSdk/1.0.0": {
+      "MarkdownVault.PluginSdk/1.5.0": {
         "runtime": {
           "MarkdownVault.PluginSdk.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+            "assemblyVersion": "1.5.0.0",
+            "fileVersion": "1.5.0.0"
           }
         }
       },
@@ -148,7 +148,7 @@
       "path": "quicker.avalonedit/6.3.1",
       "hashPath": "quicker.avalonedit.6.3.1.nupkg.sha512"
     },
-    "MarkdownVault.PluginSdk/1.0.0": {
+    "MarkdownVault.PluginSdk/1.5.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

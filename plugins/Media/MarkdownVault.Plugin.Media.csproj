@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0-windows + UseWPF por UN solo motivo: Microsoft.Win32.OpenFileDialog,
+         que usa el botón «Insertar video/audio…» de la barra y vive en
+         PresentationFramework. Mismo trato que DictadoVoz, que abre el mismo diálogo.
+         Un OpenFileDialog NO es una Window: no declara un tipo de ventana propio, así
+         que no clava el contexto de carga ni pierde la descarga en caliente (el caso
+         de Eisenhower, documentado en docs/plugins/GUIA-PLUGINS.md). -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MarkdownVault.Plugin.Media</AssemblyName>
+    <RootNamespace>MarkdownVault.Plugin.Media</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- tests/ es un PROYECTO APARTE (MarkdownVault.Plugin.Media.Tests). Sin este
+         Remove, los globs por defecto del SDK se comen sus .cs y los compilan DENTRO
+         del plugin: el SDK no excluye subcarpetas por el solo hecho de tener un .csproj
+         propio. Resultado sin esto: el plugin no compila (no conoce Xunit) y, si lo
+         hiciera, se llevaría los tests al DLL que se publica. -->
+    <Compile          Remove="tests\**" />
+    <None             Remove="tests\**" />
+    <Content          Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Solo el contrato. Private=false → NO copiar el SDK.dll a la salida del plugin
+         (lo provee el host; duplicarlo rompe la identidad de tipos). -->
+    <ProjectReference Include="..\..\PluginSdk\MarkdownVault.PluginSdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- Markdig: referencia de compilación, pero NO se copia a la salida
+         (ExcludeAssets=runtime): el host lo provee y lo comparte por el ALC. -->
+    <PackageReference Include="Markdig" Version="1.1.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyToHostPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <HostPluginDir>$(MSBuildProjectDirectory)\..\..\bin\$(Configuration)\net8.0-windows\Plugins\Media\</HostPluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_PluginOut Include="$(TargetPath)" />
+      <_PluginOut Include="$(TargetDir)$(AssemblyName).deps.json" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+      <_PluginOut Include="$(MSBuildProjectDirectory)\plugin.json" />
+    </ItemGroup>
+    <MakeDir Directories="$(HostPluginDir)" />
+    <Copy SourceFiles="@(_PluginOut)" DestinationFolder="$(HostPluginDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

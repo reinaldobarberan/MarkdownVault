@@ -1,0 +1,16 @@
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\bin\Debug\net8.0-windows\plugin.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\bin\Debug\net8.0-windows\MarkdownVault.Plugin.Media.deps.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\bin\Debug\net8.0-windows\MarkdownVault.Plugin.Media.runtimeconfig.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\bin\Debug\net8.0-windows\MarkdownVault.Plugin.Media.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\bin\Debug\net8.0-windows\MarkdownVault.Plugin.Media.pdb
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.csproj.AssemblyReference.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.GeneratedMSBuildEditorConfig.editorconfig
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.AssemblyInfoInputs.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.AssemblyInfo.cs
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.csproj.CoreCompileInputs.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.sourcelink.json
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\refint\MarkdownVault.Plugin.Media.dll
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.pdb
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\MarkdownVault.Plugin.Media.genruntimeconfig.cache
+C:\MIs Archivos\Agente\Documentacion\MarkdownVaultGit\plugins\Media\obj\Debug\net8.0-windows\ref\MarkdownVault.Plugin.Media.dll

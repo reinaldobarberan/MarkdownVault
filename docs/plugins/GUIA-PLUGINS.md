@@ -300,9 +300,19 @@ public interface IPluginContext
 ```csharp
 public interface IHostServices
 {
+    /// La raíz de vault SUPERIOR (la primera abierta). Alcanza con una sola raíz.
+    /// Con varias, usá GetOwningRoot.
     string? VaultRoot { get; }
+
     string? ActiveFilePath { get; }
     bool    IsDarkTheme { get; }
+
+    /// La raíz que CONTIENE path — el prefijo más largo con raíces anidadas — o
+    /// null si queda fuera de toda raíz abierta (SDK 1.5.0). Nunca lanza.
+    /// Es la MISMA función con la que la vista previa decide a qué carpeta mapear
+    /// vault.local, así que un plugin que arme rutas con esto no se puede
+    /// desincronizar de lo que la vista previa va a resolver.
+    string? GetOwningRoot(string path);
 
     Task<string> ReadFileAsync(string relativePath);
 
@@ -1033,7 +1043,7 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 > consumen). Por eso alcanza con subir la *minor*. Si algún día un plugin de
 > terceros implementara `IHostServices`, esto sería un cambio ROMPIENTE para él.
 >
-> **SDK 1.4.0 (actual):** agrega la contribución **`PluginListSetting`**
+> **SDK 1.4.0:** agrega la contribución **`PluginListSetting`**
 > (`IPluginContext.AddListSetting`, `PluginListEntry` — ver
 > [la sección `PluginListSetting`](#pluginlistsetting-sdk-140) en el punto 6) y el
 > método de consulta `PluginRegistry.ListSettingsFor(owner)`. Es la salida a la
@@ -1055,6 +1065,33 @@ su `Plugins/`. Sin instaladores, sin recompilar la app.
 > | `core.mermaid`, `core.highlight`, `core.callouts`, `core.copybutton` | `1.0.0` | solo contribuciones base |
 >
 > Todos siguen cargando: la comprobación es `minSdk <= SDK del host`.
+>
+> **SDK 1.5.0 (actual):** agrega **`IHostServices.GetOwningRoot(string path)`**: la
+> raíz de vault que contiene una ruta — el prefijo MÁS LARGO cuando hay raíces
+> anidadas o superpuestas — o `null` si queda afuera de todas. Delega en
+> `FileService.GetOwningRoot`, la misma función con la que `MainWindow` decide a qué
+> carpeta mapear `vault.local`.
+>
+> **Por qué hizo falta.** `VaultRoot` devuelve la PRIMERA raíz abierta, pero la vista
+> previa mapea la raíz que posee la NOTA ACTIVA. Un plugin que armaba una ruta
+> relativa contra `VaultRoot` escribía un destino roto en cuanto había dos raíces y
+> una colgaba de la otra: con `C:\vault` y `C:\vault\proyecto` abiertas y una nota en
+> la segunda, el enlace `proyecto/attachments/demo.mp4` lo resolvía la vista previa
+> como `C:\vault\proyecto\proyecto\attachments\demo.mp4` — bien formado y sin
+> resolver. El host ya se había mudado internamente a sobrecargas conscientes de la
+> raíz (`FileService.BuildImageMarkdown(root, …)`, marcadas ahí mismo como la salida
+> al *legacy entry point*); los plugins se habían quedado con la puerta vieja.
+>
+> Cambio **aditivo** para quien CONSUME el contrato: los plugins consumen
+> `IHostServices`, no la implementan, así que compilan y activan sin tocar una línea.
+> Como en el SDK 1.3.0, los únicos IMPLEMENTADORES son el host (`HostServices`, más
+> el decorador `PluginHostServices`) y el doble de pruebas `FakeHost`.
+>
+> | Plugin | `minSdk` | Motivo |
+> |---|---|---|
+> | `core.media` | `1.5.0` | usa `GetOwningRoot` (botón «Insertar video/audio…») y `AddListSetting` |
+>
+> Los plugins anteriores no cambian: `minSdk <= 1.5.0` para todos.
 
 ---
 

@@ -41,6 +41,9 @@ internal sealed class PluginHostServices : IHostServices
     public string? ActiveFilePath => _inner.ActiveFilePath;
     public bool    IsDarkTheme    => _inner.IsDarkTheme;
 
+    // SDK 1.5.0: consulta de solo lectura, sin nada que acotar por plugin — se pasa derecho.
+    public string? GetOwningRoot(string path) => _inner.GetOwningRoot(path);
+
     public Task<string> ReadFileAsync(string relativePath) => _inner.ReadFileAsync(relativePath);
     public void ShowStatus(string message)                 => _inner.ShowStatus(message);
     public void OpenVaultFile(string relativePath)         => _inner.OpenVaultFile(relativePath);

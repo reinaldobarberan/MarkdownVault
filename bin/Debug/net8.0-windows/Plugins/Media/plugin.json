@@ -1,0 +1,9 @@
+{
+  "id": "core.media",
+  "name": "Video y Audio",
+  "version": "1.0.0",
+  "description": "Reproduce los videos y audios del vault dentro de la nota: ![](clip.mp4) y ![[nota-de-voz.opus]] dejan de ser una imagen rota y pasan a ser un reproductor con controles. Los formatos son editables desde esta ventana.",
+  "author": "MarkdownVault",
+  "entry": "MarkdownVault.Plugin.Media.dll",
+  "minSdk": "1.5.0"
+}

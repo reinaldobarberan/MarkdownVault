@@ -9,6 +9,11 @@ internal sealed class FakeHost : IHostServices
     public string? VaultRoot      => null;
     public string? ActiveFilePath => null;
     public bool    IsDarkTheme    => false;
+
+    // SDK 1.5.0: sin raíces abiertas, nada pertenece a ninguna. Mismo contrato que
+    // FileService.GetOwningRoot, que devuelve null cuando no hay raíz que contenga
+    // la ruta (o cuando no hay ninguna abierta).
+    public string? GetOwningRoot(string path) => null;
     public Task<string> ReadFileAsync(string relativePath) => Task.FromResult(string.Empty);
     public void ShowStatus(string message) { }
     public void OpenVaultFile(string relativePath) { }

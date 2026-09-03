@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MarkdownVault.PluginSdk</AssemblyName>
     <RootNamespace>MarkdownVault.PluginSdk</RootNamespace>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <!-- Contrato puro: sin dependencias de WPF, Markdig ni WebView2. -->
   </PropertyGroup>
 
