@@ -586,6 +586,37 @@ public class FileService : IDisposable
         CopyImageToAssets(VaultRoot, sourcePath, fallbackDir);
 
     /// <summary>
+    /// Guarda una imagen ya codificada (los bytes PNG del portapapeles) en la carpeta
+    /// <c>attachments/</c> de <paramref name="root"/> —o de <paramref name="fallbackDir"/>
+    /// cuando no hay raíz—, evitando colisiones de nombre. Devuelve la ruta escrita.
+    ///
+    /// No es un caso de <see cref="CopyImageToAssets"/>: el pegado no tiene archivo de origen,
+    /// la imagen vive en memoria. La carpeta es <c>attachments/</c> y no <c>assets/</c> porque
+    /// es donde ya está todo lo pegado en los vaults existentes (y donde el plugin Media abre
+    /// su diálogo).
+    /// </summary>
+    public string SaveImageToAttachments(string? root, byte[] imageBytes, string? fallbackDir)
+    {
+        var baseDir = root ?? fallbackDir
+            ?? throw new InvalidOperationException(
+                "No hay ningún vault abierto y no hay directorio disponible. " +
+                "Abrí un vault (Archivo → Abrir vault) o guardá el archivo actual primero.");
+
+        var attachDir = Path.Combine(baseDir, "attachments");
+        Directory.CreateDirectory(attachDir);
+
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var destPath  = Path.Combine(attachDir, $"screenshot_{timestamp}.png");
+        var counter   = 1;
+
+        while (File.Exists(destPath))
+            destPath = Path.Combine(attachDir, $"screenshot_{timestamp}_{counter++}.png");
+
+        File.WriteAllBytes(destPath, imageBytes);
+        return destPath;
+    }
+
+    /// <summary>
     /// Returns a Markdown-style image reference relative to <paramref name="root"/>.
     /// Example: <c>![image](assets/photo.png)</c>. Falls back to just the file name when
     /// <paramref name="root"/> is <c>null</c>.

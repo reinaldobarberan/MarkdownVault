@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -849,6 +849,38 @@ public partial class EditorGroupViewModel : ObservableObject
         catch (Exception ex)
         {
             _dialogService.ShowError(ex.Message, "Error de imagen");
+        }
+    }
+
+    /// <summary>
+    /// Guarda una imagen pegada desde el portapapeles y devuelve su referencia Markdown, o
+    /// <c>null</c> si falló (al usuario ya se le avisó).
+    ///
+    /// Resolución por vault, igual que <see cref="InsertImage"/> y <see cref="RefreshPreview"/>:
+    /// la imagen aterriza en el <c>attachments/</c> del vault DUEÑO de la nota activa, no en el
+    /// del primer vault abierto. Con dos vaults abiertos y la nota en el segundo, calcular
+    /// contra <c>VaultRoot</c> escribía el PNG en el vault A: el enlace <c>attachments/...</c>
+    /// quedaba bien formado pero la vista previa —que mapea <c>vault.local</c> a la raíz
+    /// dueña— lo buscaba en el vault B y no encontraba nada. Imagen rota, archivo en el vault
+    /// equivocado.
+    /// </summary>
+    public string? SavePastedImage(byte[] pngBytes)
+    {
+        var owningRoot = _fileService.GetOwningRoot(CurrentFilePath) ?? _fileService.VaultRoot;
+        var fallback   = HasFile ? Path.GetDirectoryName(CurrentFilePath) : null;
+
+        try
+        {
+            var destPath = _fileService.SaveImageToAttachments(owningRoot, pngBytes, fallback);
+            // El enlace se calcula contra la MISMA base en la que se escribió el archivo:
+            // si no hubo raíz y se usó el fallback, relativizar contra la raíz (null) daría
+            // solo el nombre y el enlace apuntaría al lugar equivocado.
+            return _fileService.BuildImageMarkdown(owningRoot ?? fallback, destPath, "screenshot");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError(ex.Message, "Error al pegar la imagen");
+            return null;
         }
     }
 

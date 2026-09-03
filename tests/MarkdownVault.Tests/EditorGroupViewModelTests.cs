@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
@@ -336,6 +336,38 @@ public class EditorGroupViewModelTests : IDisposable
     // instead of every group subscribing separately), so the entry point they exercise is now
     // MainViewModel, not EditorGroupViewModel directly. Mechanical relocation, same policy,
     // same assertions.
+
+    // ─── Pegado de imagen: resolución por vault ──────────────────────────────
+
+    /// <summary>
+    /// La regresión concreta: con dos vaults abiertos, pegar en una nota del SEGUNDO
+    /// escribía el PNG en attachments/ del PRIMERO (la vista leía FileService.VaultRoot,
+    /// que es la raíz de arriba). El enlace quedaba bien formado pero la vista previa lo
+    /// resolvía contra la raíz dueña — el vault B — y no encontraba el archivo.
+    /// </summary>
+    [Fact]
+    public async Task SavePastedImage_writes_into_the_owning_vault_not_the_first_open_one()
+    {
+        var vaultA = Path.Combine(_root, "VaultA");
+        var vaultB = Path.Combine(_root, "VaultB");
+        Directory.CreateDirectory(vaultA);
+        Directory.CreateDirectory(vaultB);
+        _fileService.AddRoot(vaultA);   // primera raíz abierta = la que se usaba mal
+        _fileService.AddRoot(vaultB);
+
+        var noteInB = Path.Combine(vaultB, "nota.md");
+        File.WriteAllText(noteInB, "# nota");
+
+        var vm = CreateVm();
+        await vm.OpenFileAsync(noteInB);
+
+        var markdown = vm.SavePastedImage([1, 2, 3]);
+
+        Assert.Equal("![screenshot](attachments/" +
+                     Path.GetFileName(Directory.GetFiles(Path.Combine(vaultB, "attachments"))[0]) +
+                     ")", markdown);
+        Assert.False(Directory.Exists(Path.Combine(vaultA, "attachments")));
+    }
 
     public void Dispose()
     {

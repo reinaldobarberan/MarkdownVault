@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using MarkdownVault.Services;
 using Xunit;
 
@@ -195,6 +195,38 @@ public class FileServiceTests : IDisposable
 
         Assert.StartsWith(Path.Combine(Path.GetFullPath(_rootB), "assets"), dest);
         Assert.DoesNotContain(Path.GetFullPath(_rootA), dest, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SaveImageToAttachments_writes_under_the_given_roots_attachments_folder_not_the_fallback()
+    {
+        // root = vault B, fallbackDir = vault A: con raíz no nula el fallback se ignora por
+        // completo — la imagen pegada aterriza en attachments/ de B, nunca en el de A.
+        var dest = _svc.SaveImageToAttachments(
+            Path.GetFullPath(_rootB), [1, 2, 3], fallbackDir: _rootA);
+
+        Assert.StartsWith(Path.Combine(Path.GetFullPath(_rootB), "attachments"), dest);
+        Assert.DoesNotContain(Path.GetFullPath(_rootA), dest, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(dest));
+    }
+
+    [Fact]
+    public void SaveImageToAttachments_does_not_overwrite_within_the_same_second()
+    {
+        var first  = _svc.SaveImageToAttachments(_rootA, [1], fallbackDir: null);
+        var second = _svc.SaveImageToAttachments(_rootA, [2], fallbackDir: null);
+
+        Assert.NotEqual(first, second);
+        Assert.Equal(new byte[] { 1 }, File.ReadAllBytes(first));
+        Assert.Equal(new byte[] { 2 }, File.ReadAllBytes(second));
+    }
+
+    [Fact]
+    public void SaveImageToAttachments_falls_back_to_the_given_dir_when_no_root()
+    {
+        var dest = _svc.SaveImageToAttachments(root: null, [1], fallbackDir: _rootA);
+
+        Assert.StartsWith(Path.Combine(_rootA, "attachments"), dest);
     }
 
     public void Dispose()

@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -365,53 +365,31 @@ public partial class EditorView : UserControl, IFindReplaceTarget
     // ─── Clipboard image paste ────────────────────────────────────────────────
 
     /// <summary>
-    /// Saves the clipboard image to {vault}/attachments/ and inserts a
-    /// Markdown image reference at the current caret position.
+    /// Codifica la imagen del portapapeles a PNG y delega en el ViewModel, que decide EN QUÉ
+    /// vault se guarda. La vista no resuelve rutas: antes leía <c>App.FileService.VaultRoot</c>
+    /// —la primera raíz abierta— y con dos vaults abiertos el PNG terminaba en el vault
+    /// equivocado.
     /// </summary>
     private void PasteClipboardImage()
     {
-        var vaultRoot = App.FileService?.VaultRoot;
-        if (string.IsNullOrEmpty(vaultRoot) || !Directory.Exists(vaultRoot))
-        {
-            MessageBox.Show(
-                "Abrí un vault primero para poder pegar imágenes.",
-                "Sin vault abierto", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        if (_vm is null) return;
 
         var image = Clipboard.GetImage();
         if (image is null) return;
 
-        // Create attachments folder if needed.
-        var attachDir = Path.Combine(vaultRoot, "attachments");
-        Directory.CreateDirectory(attachDir);
-
-        // Generate unique filename with timestamp.
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var fileName  = $"screenshot_{timestamp}.png";
-        var fullPath  = Path.Combine(attachDir, fileName);
-
-        // Avoid overwrite if pasting multiple times in the same second.
-        var counter = 1;
-        while (File.Exists(fullPath))
-        {
-            fileName = $"screenshot_{timestamp}_{counter}.png";
-            fullPath = Path.Combine(attachDir, fileName);
-            counter++;
-        }
-
-        // Encode and save as PNG.
+        byte[] png;
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(image));
-        using (var stream = File.Create(fullPath))
+        using (var buffer = new MemoryStream())
         {
-            encoder.Save(stream);
+            encoder.Save(buffer);
+            png = buffer.ToArray();
         }
 
-        // Insert Markdown image reference at caret.
-        var relativePath = $"attachments/{fileName}";
-        var markdown     = $"![screenshot]({relativePath})";
-        var editor       = TextEditor;
+        var markdown = _vm.SavePastedImage(png);
+        if (markdown is null) return;
+
+        var editor = TextEditor;
         editor.Document.Insert(editor.CaretOffset, markdown);
         // Note: Document.Insert already advances the caret past the inserted text.
         editor.Focus();
