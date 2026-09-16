@@ -101,7 +101,7 @@ namespace MarkdownVault.Views {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/MarkdownVault;component/views/unsavedchangesdialog.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/MarkdownVault;V1.0.0.0;component/views/unsavedchangesdialog.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\UnsavedChangesDialog.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

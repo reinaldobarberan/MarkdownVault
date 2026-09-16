@@ -516,6 +516,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Los ajustes del grafo se escriben con un retardo de 400 ms para no golpear el disco
+        // mientras se arrastra un slider. Al cerrar no hay 400 ms: hay que forzar la escritura o
+        // se pierde lo último que el usuario tocó.
+        _vm?.Graph.FlushSettings();
+
         // El formulario de búsqueda cancela su propio Closing para esconderse en vez de
         // morir (ver FindReplaceWindow). Sin este cierre forzado quedaría una ventana
         // escondida viva y, con ShutdownMode=OnLastWindowClose, el proceso no terminaría.

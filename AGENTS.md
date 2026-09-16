@@ -30,6 +30,8 @@ MarkdownVault/
 │   ├── AppSettings.cs            # Configuración persistida (tema, fuente, OpenVaultPaths = set de vaults abiertos)
 │   ├── OpenTab.cs                # Modelo de pestaña abierta
 │   ├── VaultFile.cs              # Nodo de archivo/directorio en el vault
+│   ├── GraphNode.cs              # Nodo del grafo + su estado de física, grupo, isla y destino
+│   ├── GraphSettings.cs          # Perillas del grafo que se recuerdan por vault
 │   └── ViewMode.cs               # Enum: EditorOnly | EditAndPreview | ViewerOnly
 ├── ViewModels/
 │   ├── MainViewModel.cs          # VM principal (vaults abiertos, tema, fuente, explorador)
@@ -37,6 +39,7 @@ MarkdownVault/
 │   ├── FileTreeViewModel.cs      # VM del árbol de archivos (una sección por vault abierto)
 │   ├── VaultsViewModel.cs        # VM de "Administrar vaults" (abrir/cerrar cada vault conocido)
 │   ├── GraphViewModel.cs         # VM del grafo de notas, scopeado al vault del tab activo
+│   ├── GraphGroupViewModel.cs    # Fila de la leyenda de carpetas (color, cantidad, on/off)
 │   └── FindReplaceViewModel.cs   # VM del formulario Buscar/Reemplazar (patrón, opciones, comandos)
 ├── Views/
 │   ├── MainWindow.xaml / .cs     # Ventana principal (layout, WebView2, tabs)
@@ -44,10 +47,22 @@ MarkdownVault/
 │   ├── FileTreeView.xaml / .cs   # Árbol lateral del vault
 │   ├── FindReplaceWindow.xaml / .cs # Formulario flotante de Buscar/Reemplazar (no modal)
 │   ├── FindCommands.cs           # RoutedUICommands de Buscar/Reemplazar (menú + atajos)
+│   ├── GraphView.xaml / .cs      # Overlays del grafo (filtros, leyenda de carpetas, zoom)
+│   ├── GraphCanvas.cs            # Superficie inmediata: simulación + dibujo + cámara
 │   └── InputDialog.xaml / .cs    # Diálogo para input de usuario
 ├── Services/
 │   ├── FileService.cs            # I/O de archivos, escaneo; mantiene VaultRoots (multi-root)
 │   ├── GraphService.cs           # Grafo de notas/enlaces, scopeado a un vault root por vez
+│   ├── GraphFilter.cs            # Motor PURO de filtrado (grado, carpetas, saltos, búsqueda)
+│   ├── GraphGrouping.cs          # Grupos por carpeta de 1er nivel + anclas en anillo
+│   ├── GraphComponents.cs        # Islas (componentes conexos) por union-find
+│   ├── GraphLayout.cs            # Política de layout: destinos por nodo + aparcado de huérfanas
+│   ├── GraphOctree.cs            # Barnes-Hut 3D para la repulsión (reemplaza el O(n²))
+│   ├── GraphCollision.cs         # Separación de nodos solapados por grilla uniforme
+│   ├── GraphMetrics.cs           # Radio del nodo — fuente ÚNICA para dibujo, colisión y encuadre
+│   ├── GraphCamera.cs            # Cámara órbita + proyección/des-proyección en perspectiva
+│   ├── GraphPalette.cs           # Paleta de colores de grupo (fuente única canvas + leyenda)
+│   ├── GraphSettingsService.cs   # Ajustes del grafo por vault, en AppData, con escritura diferida
 │   ├── MarkdownService.cs        # Markdown → HTML (Markdig) + CSS + Mermaid
 │   ├── SettingsService.cs        # Persistencia de configuración
 │   ├── ISpellCheckService.cs     # Contrato del corrector + record SpellError
@@ -100,6 +115,7 @@ El **File Tree muestra una sección por cada vault abierto** (multi-root): no ha
 - **Corrector ortográfico**: Subrayado rojo ondulado bajo palabras mal escritas, usando los diccionarios del SO (Windows `ISpellChecker`). Idioma configurable vía `SpellCheckLanguage` (empty = auto por cultura del SO). Solo en `.md/.markdown/.txt`; saltea bloques de código, frontmatter YAML, URLs, HTML y links
 - **Buscar y reemplazar**: Menú `Editar` + `Ctrl+F` (buscar), `Ctrl+H` (reemplazar), `F3` / `Shift+F3` (siguiente / anterior sin abrir el formulario). Formulario flotante NO modal: el editor sigue editable mientras está abierto. Opciones mayúsculas/minúsculas, palabra completa y regex (con grupos `$1` en el reemplazo). Alcance: el archivo del panel con foco — no busca en todo el vault
 - **Formato rápido**: Toolbar con Bold, Italic, Code, H1-H3, listas, enlaces, imágenes, bloques de código por lenguaje
+- **Grafo de notas**: vista tipo Obsidian del vault del tab activo. Color y agrupación por carpeta de primer nivel con leyenda para encender/apagar cada una; islas (componentes conexos) separadas dentro de cada carpeta; notas sin enlaces aparcadas en anillos exteriores; filtros por enlaces mínimos, saltos del grafo local y texto; etiquetas que se descartan solas cuando se pisarían; arrastrar fija un nodo (clic derecho o el botón 📌 lo libera)
 - **Vista previa**: WebView2 renderizando HTML con CSS GitHub-flavored
 - **Modos de vista**: Solo editor | Editor + Preview | Solo visor (ciclo con botón en toolbar)
 - **Tabs**: Múltiples archivos abiertos, Ctrl+Tab/Ctrl+Shift+Tab para navegar, middle-click para cerrar
@@ -135,6 +151,63 @@ El **File Tree muestra una sección por cada vault abierto** (multi-root): no ha
 - **`IPluginContext.AddListSetting(PluginListSetting)`** deja que un plugin declare una lista editable (clave, o clave+valor si `ValueLabel` no es `null`) sin definir ninguna `Window` propia. El HOST la dibuja entera (`Views/PluginsWindow.xaml` + `ViewModels/PluginListSettingViewModel.cs`): alta, baja, edición, filtro, aviso de duplicados/vacíos y guardado explícito. El plugin solo aporta `Load`/`Save`/`Describe`. Es la salida a la limitación de WPF que clava el `AssemblyLoadContext` (ver `docs/plugins/GUIA-PLUGINS.md` §9): declarar una `Window` propia pierde la descarga en caliente; declarar una lista, no.
 - **Normalización y duplicados son responsabilidad del host** (`Services/Plugins/PluginListRules.cs`, lógica pura sin WPF): recorte de espacios, descarte de claves vacías, deduplicación `OrdinalIgnoreCase` (los acentos sí distinguen). `Save` recibe la lista YA normalizada; el plugin no tiene que volver a limpiarla.
 - **`core.dictado-voz` es el único consumidor real hoy** (el glosario técnico, ver `plugins/DictadoVoz/DictadoVozPlugin.cs` + `TechnicalGlossary.cs`). El diccionario de pronunciación de `core.lector-documentos` es el caso pensado para `ValueLabel` (segunda columna) pero **todavía no lo adoptó**.
+
+### Grafo de notas
+- **La política vive en servicios PUROS, el canvas solo dibuja.** `GraphFilter`, `GraphGrouping`, `GraphComponents`, `GraphLayout`, `GraphOctree`, `GraphCamera` y `GraphPalette` no referencian WPF: reciben nodos/enlaces y devuelven decisiones. Por eso todo el comportamiento del grafo se testea headless (`GraphFilterTests`, `GraphGroupingTests`, `GraphComponentsTests`, `GraphLayoutTests`, `GraphOctreeTests`, `GraphCameraTests`), sin un solo test de UI. Misma convención que `TextSearch`. La capa de servicios define su propio `GraphPoint` justamente para no arrastrar `System.Windows.Point` adentro.
+- **`GraphFilter`, `GraphComponents` y `GraphPalette` tienen CERO referencias a coordenadas.** El filtrado trabaja sobre grados, carpetas y texto; los componentes son topología pura. Por eso pasar el grafo de 2D a 3D no les tocó una línea — y es la mejor evidencia de por qué conviene mantener esa separación.
+- **Agrupar NO suma una fuerza nueva: cambia el destino de la gravedad que ya existía.** Con "Agrupar por carpeta" encendido, cada nodo es atraído a `TargetX/TargetY` (el lugar de su isla dentro de su carpeta) en vez de al origen. Apilar una "fuerza de cluster" sobre una gravedad global que tira al centro produce dos fuerzas peleándose y un layout que nunca se define.
+- **Las anclas de carpeta son FIJAS en un anillo, no centroides vivos.** Un centroide calculado por frame deriva hacia los otros y el grafo vuelve a colapsar en una sola bola. El anillo garantiza la separación pase lo que pase con la simulación.
+- **Los índices de grupo se ordenan alfabéticamente (raíz primero), nunca por aparición ni por tamaño.** El índice es también el slot de la paleta: si cambiara al agregar una nota, el vault entero se recolorearía. La misma regla aplica a las islas en `GraphComponents`, renumeradas por la nota alfabéticamente primera de cada una.
+- **Una nota sin enlaces no se simula.** No hay nada que la empuje salvo la repulsión mutua, así que `GraphLayout` le da un asiento fijo en anillos concéntricos exteriores (`Parked = true`) y `GraphCanvas` la saltea. Declutter y rendimiento a la vez: en un vault pobre en enlaces, esas son la mayoría de las notas.
+- **Repulsión con Barnes-Hut, colisión con grilla uniforme.** Son dos problemas distintos: la repulsión es de largo alcance (un cúmulo lejano empuja como un solo cuerpo con la masa total → octree, O(n log n)); la colisión es estrictamente local (solo entre esferas que ya se tocan → grilla dimensionada al solapamiento máximo, 27 celdas por nodo). Meter la colisión en el octree habría sido más código y peor.
+- **`GraphCollision.Tolerance` (0.05) no es cosmética.** Deshacer una FRACCIÓN del solapamiento por pasada (`stiffness` 0.5) hace que la distancia se acerque al mínimo asintóticamente y nunca lo alcance: sin tolerancia el pase reportaría "sigue solapado" para siempre y no se podría usar para decidir que un layout está limpio.
+- **El desempate para nodos EXACTAMENTE coincidentes reparte sobre la esfera, no sobre un eje.** Mandar cada par coincidente en dirección X ensarta la pila en una fila, y una fila después relaja de a vecinos — cientos de pasadas para veinte nodos. La dirección sale de un FNV-1a de los dos ids: estable entre frames (si cambiara, los nodos coincidentes temblarían) y determinista entre procesos, cosa que `string.GetHashCode` NO garantiza porque .NET randomiza el hash de strings por proceso.
+- **`GraphNode.Radius` es la fuente única del tamaño del nodo**, estampada por `GraphMetrics.Assign`. La comparten el dibujo, la colisión y el encuadre. Dos copias derivarían, y el síntoma sería discos que se solapan por más que la colisión empuje.
+- **El tamaño es RELATIVO al vault, no absoluto.** `MinRadius + (MaxRadius-MinRadius)·√(grado/gradoMáximo)`. Una fórmula absoluta obliga a asumir un rango de grados, y los vaults no se ponen de acuerdo: uno disperso llega a 5, un wiki denso a 32. Calibrada para el primero, el segundo se vuelve un pegote — y alejar el zoom NO ayuda, porque todo se achica junto y lo que está mal es la PROPORCIÓN.
+- **El slider "Tamaño de nodos" se aplica en el RADIO, no al dibujar.** El radio es también lo que la colisión mantiene separado y lo que el encuadre mide: escalar solo el pintado agrandaría los discos sin darles más lugar, y se encimarían. Por eso `GraphMetrics.Assign(nodes, scale)` recalcula desde el grado en vez de multiplicar sobre lo que ya había — si no, arrastrar el slider los haría crecer sin límite.
+- **El encuadre automático tiene DOS techos, no uno.** Llenar la ventana no alcanza: un vault chico y muy enlazado se magnificaría hasta que sus hubs fueran manchas superpuestas. `MaxFitZoom` limita además por el tamaño en píxeles que puede alcanzar el nodo más grande (`MaxNodeScreenRadius`).
+- **`θ = 0` en `GraphOctree` es EXACTO y es el ancla de los tests.** Con θ=0 el árbol no aproxima nada y tiene que dar lo mismo, nodo por nodo, que el bucle de fuerza bruta escrito literal dentro de `GraphOctreeTests`. Producción usa θ=0.7. Una aproximación sin forma de verificarla genera layouts que *parecen* plausibles: el peor tipo de bug.
+
+### Grafo: ajustes por vault
+- **Los ajustes se guardan POR VAULT, no globalmente.** Lo correcto depende de cómo sea el vault: un wiki denso de 40 notas quiere nodos chicos y piso de enlaces alto; un montón suelto de mil notas quiere lo contrario. Un único ajuste global estaría mal para todos los vaults menos uno.
+- **El archivo vive FUERA del vault** (`%AppData%/MarkdownVault/graphs/<nombre>-<hash>.json`). Adentro aparecería en el explorador (`Directory.GetDirectories` no filtra nada) y, peor, el `FileSystemWatcher` del vault tiene `IncludeSubdirectories=true` sin filtro: arrastrar un slider refrescaría el árbol decenas de veces por segundo.
+- **El nombre de archivo usa FNV-1a, NO `string.GetHashCode`.** .NET randomiza el hash de strings POR PROCESO: con eso, cada arranque mapearía el mismo vault a un archivo distinto y no se recuperaría ningún ajuste jamás. Hay un test que fija el nombre esperado como candado — si se cambia el algoritmo hace falta una migración, no un valor esperado nuevo.
+- **Las carpetas apagadas se guardan por NOMBRE, no por índice.** Los índices se reparten por orden alfabético de carpeta, así que agregar o borrar una corre todas las de después y al recargar se escondería la carpeta equivocada.
+- **La escritura es DIFERIDA (400 ms)** porque arrastrar un slider dispara decenas de cambios y solo importa el último. Consecuencia obligatoria: `MainWindow.Window_Closing` llama a `Graph.FlushSettings()` — al cerrar no hay 400 ms y se perdería lo último que se tocó.
+- **`_restoring` en `GraphViewModel` no es opcional.** Cada setter reacciona relayouteando y encolando un guardado; sin la bandera, restaurar diez valores correría el layout diez veces y reescribiría en disco lo que se acababa de leer.
+- **El orden en `BuildAsync` importa**: restaurar ANTES de `RebuildGroups` (el tamaño de nodo y el modo 3D deciden dónde caen las anclas), y las carpetas apagadas DESPUÉS (las filas de la leyenda todavía no existen).
+- **La búsqueda NO se guarda**: es una pregunta momentánea, no un ajuste. El archivo activo tampoco — lo sigue la pestaña con foco.
+
+### Grafo: vista 3D
+- **La simulación es SIEMPRE tridimensional; el modo plano es el caso degenerado.** Con "Vista 3D" apagada, `GraphLayout` pone todos los destinos en Z=0 y la cámara queda en yaw/pitch 0: la proyección devuelve exactamente la cámara 2D anterior. Un camino de código, no dos.
+- **El interruptor 3D RE-EJECUTA el layout, no solo inclina la cámara.** Aplastar una esfera de anclas contra el plano dejaría dos carpetas en el mismo punto. Por eso `GraphLayout.Assign` recibe `spatial` y `GraphGrouping.Anchors` reparte en círculo o en esfera según el caso (`GraphLayoutTests.Switching_between_flat_and_spatial_never_drops_two_folders_on_one_spot`).
+- **Ese es el argumento técnico del 3D**: sobre un anillo el lugar disponible crece con el radio (2πr); sobre una esfera, con el radio AL CUADRADO (4πr²). La misma cantidad de carpetas necesita bastante menos radio en 3D.
+- **Las huérfanas quedan PLANAS incluso en 3D**, a propósito. Una esfera de huérfanas envolvería el grafo y taparía las notas conectadas desde cualquier ángulo; un halo plano es algo que se mira a través.
+- **Se dibuja en coordenadas de PANTALLA, sin `PushTransform` global.** Con perspectiva cada nodo tiene su propia escala y una sola transformación no puede expresar eso. Consecuencia: los grosores de línea y el tamaño del texto son constantes en píxeles, no divididos por el zoom.
+- **La atenuación por distancia se normaliza contra el rango de profundidad REAL del grafo** (`_nearDepth`/`_farDepth`, que mide `ProjectVisible`), no contra la razón de perspectiva de la cámara. Atarla a la perspectiva fue un bug: con un grafo de 440 unidades de hondo visto desde 1700, el rango salía 0.89–1.00 — un 11% que nadie ve. Un layout plano no tiene rango, así que `Fog` devuelve 1 y el efecto se apaga solo, sin bandera de modo.
+- **Lo lejano se MEZCLA hacia el color de fondo, no se vuelve transparente.** Un disco translúcido deja ver la maraña de aristas por detrás y queda embarrado; uno mezclado sigue sólido y simplemente parece lejano. Es como funciona la bruma en un horizonte real. Los brushes se cachean por (color, escalón de niebla) — uno por nodo por frame sería puro desperdicio.
+- **Las aristas también se atenúan** con la profundidad promedio de sus extremos. A intensidad plena forman una malla brillante por delante de todo y aplanan la profundidad que los discos intentan transmitir.
+- **Orden del pintor.** No hay z-buffer dibujando en 2D inmediato, así que los nodos se ordenan por profundidad y se dibujan de atrás hacia adelante. Las aristas van todas antes, y se descarta la que tenga un extremo detrás del lente (se dibujaría cruzando la pantalla).
+- **El texto NO se escala con la distancia.** Una etiqueta lejana en tipografía diminuta sería ilegible y encima ocuparía lugar. La distancia decide quién GANA el espacio, no de qué tamaño se dibuja.
+- **Las etiquetas llevan un halo del color del FONDO**, dibujado sobre la geometría del texto (`FormattedText.BuildGeometry`), no repitiendo el texto desplazado. El color sale del recurso `GraphBackground`, así que acompaña el tema. Sin halo, un nombre sobre un nodo claro es ilegible por más que el orden de dibujo sea correcto.
+- **El halo son DOS pasadas, y el orden es todo**: `DrawGeometry(null, haloPen, geom)` primero y `DrawGeometry(labelBrush, null, geom)` encima. Un trazo en WPF va CENTRADO sobre el contorno — mitad afuera, mitad ADENTRO — y a 11px la mitad interior es más ancha que el palo de las letras. Pintar relleno y trazo en una sola llamada tapa el glifo con el halo y el texto desaparece. Bug real, costó una iteración. Por eso `HaloThickness = 3.0`: solo la mitad queda visible.
+- **La geometría del texto se cachea construida en el ORIGEN y se posiciona con un `TranslateTransform`.** `BuildGeometry` es lo bastante caro como para que llamarlo por etiqueta por frame costara más que todo el resto del frame junto.
+- **El reposo exige DOS condiciones: velocidades bajas Y cero solapamientos.** La colisión corrige POSICIONES sin tocar velocidades, así que un layout puede estar perfectamente quieto y con discos encimados. Ese fue un bug real: la simulación se congelaba a mitad de resolver. Por eso `GraphCollision.Resolve` devuelve una cuenta y por eso existe `Tolerance` — sin ella la cuenta nunca llegaría a cero.
+- **`MaxFramesAwake = 600` es una válvula de seguridad**, no paranoia: un grafo lo bastante denso está sobre-restringido y sus solapamientos no llegan a cero nunca. Sin tope, ese grafo tendría un núcleo al 100% mientras la vista esté abierta.
+- **Los resortes NO comprimen el cúmulo.** Con reposo 130 y nodos a 32, el resorte está COMPRIMIDO y empuja hacia afuera. Quien junta es la gravedad hacia el ancla de carpeta: para aflojar un cúmulo el control es **Fuerza central**, no **Enlaces**.
+- **`Project` y `Unproject` deben ser inversas exactas, y hay un test de ida y vuelta que lo verifica.** Arrastrar un nodo depende de eso: una posición del mouse es un RAYO, no un punto, así que el canvas fija la profundidad actual del nodo (`_dragDepth`) y des-proyecta sobre ese plano. Una inversa sutilmente mal hecha se manifiesta como nodos que se escapan del cursor — parece un bug de física y es imposible de rastrear desde el síntoma.
+- **`Unproject` solo es inversa DELANTE del lente.** Detrás no hay nada que invertir. `Pick` ya rechaza nodos con `Depth <= NearPlane`, así que nunca se puede arrastrar uno desde ahí.
+- **`Pick` devuelve el más CERCANO a la cámara entre los candidatos**, no el primero: con perspectiva varios nodos comparten el mismo píxel y hay que hacer clic en el que se ve.
+- **El pitch se limita a ±1.4 rad.** Cruzar el polo da vuelta el mundo en medio del arrastre y el usuario pierde toda referencia.
+- **Entrar en 3D inclina la cámara de una (yaw 0.6 / pitch 0.35).** Dejarla cuadrada mostraría una imagen idéntica a la plana y el interruptor parecería no hacer nada.
+- **`FitToContent` itera (4 pasadas).** Con perspectiva la respuesta se alimenta a sí misma: cambiar el zoom mueve la cámara, lo que cambia el tamaño proyectado del grafo.
+- **El tope de profundidad del quadtree (32) no es defensivo por gusto**: dos notas fijadas en el mismo píxel subdividirían para siempre. En el tope la celda guarda la masa acumulada sin hijos y la consulta la trata como un solo grumo.
+- **La simulación se congela al asentarse**, y CUALQUIER `PropertyChanged` del VM la despierta (`Wake()`), no solo el mouse. Sin eso, apagar una carpeta dejaría el grafo congelado en una imagen ya incorrecta. El renderizado sigue corriendo cada frame igual: el hover y la cámara tienen que repintar, y dibujar es la mitad barata.
+- **`FitToContent` NO se puede llamar al reconstruir el grafo**: en ese momento las posiciones siguen siendo el círculo semilla de `GraphService`. Se difiere (`_needsFit`) al primer frame en que el layout se asienta, que es cuando recién se conoce la extensión real.
+- **Las etiquetas se descartan por oclusión.** Se ordenan por importancia (nota activa → nodo bajo el cursor y sus vecinos → grado) y la que chocaría con una ya colocada se saltea ese frame. Dibujarlas todas convierte un vault mediano en una sopa ilegible.
+- **El ámbar `#E0AF68` está deliberadamente FUERA de `GraphPalette`**: es el color de la nota activa, y un grupo usándolo la volvería imposible de encontrar.
+- **Gotcha de `DockPanel` en `GraphView.xaml`**: `LastChildFill` está en `True` por defecto y **el último hijo ignora su `Dock`** — rellena el espacio sobrante. Lo que va anclado a la derecha (el valor de un slider, un interruptor) se declara PRIMERO; el elemento que debe estirarse va último. Poner el valor al final lo pega a la etiqueta.
+- **Los converters se declaran localmente en `GraphView.Resources`, no vía `StaticResource` al diccionario de tema**: el tema se reemplaza en caliente al cambiar light/dark. Misma convención que `FindReplaceWindow.xaml`.
 
 ### Buscar / Reemplazar
 - **El `SearchPanel` de AvalonEdit NO tiene reemplazo.** Verificado sobre el ensamblado de `Quicker.AvalonEdit` 6.3.1: `ICSharpCode.AvalonEdit.Search.SearchPanel` solo expone `FindNext`/`FindPrevious`/`Open`/`Close` y las tres opciones (`MatchCase`, `WholeWords`, `UseRegex`). Además nunca se llamó a `SearchPanel.Install(...)`, así que tampoco estaba el Ctrl+F integrado. Por eso hay motor propio (`Services/TextSearch.cs`) en vez de envolver el del fork.

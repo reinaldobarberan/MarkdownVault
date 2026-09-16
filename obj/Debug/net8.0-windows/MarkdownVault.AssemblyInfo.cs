@@ -11,12 +11,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyMetadataAttribute("BuildStamp", "2026-09-03")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("BuildStamp", "2026-09-15")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("Reinaldo Barberán")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyCopyrightAttribute("© 2026 Reinaldo Barberán")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+build.20260903.3b1ccd619c18b9da908796ffbfc81a467ff7a5a9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+build.20260915.8307463fb65e7fb2551e704ffc24caede42386cc")]
 [assembly: System.Reflection.AssemblyProductAttribute("MarkdownVault")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MarkdownVault")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

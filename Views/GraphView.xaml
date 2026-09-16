@@ -1,9 +1,17 @@
 <UserControl x:Class="MarkdownVault.Views.GraphView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:MarkdownVault.Views">
+             xmlns:local="clr-namespace:MarkdownVault.Views"
+             xmlns:helpers="clr-namespace:MarkdownVault.Helpers">
 
     <UserControl.Resources>
+
+        <!-- Local instances, not the theme ones: the theme dictionary is swapped at runtime
+             and a StaticResource lookup into it would break on the light/dark toggle. Same
+             pattern as FindReplaceWindow. -->
+        <helpers:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <helpers:BoolToVisibilityConverter x:Key="InverseBoolToVis"
+                                           TrueValue="Collapsed" FalseValue="Visible"/>
 
         <!-- ── Section header ("FILTROS", "FUERZAS", "MOSTRAR") ── -->
         <Style x:Key="GraphSectionHeader" TargetType="TextBlock">
@@ -70,6 +78,16 @@
             </Setter>
         </Style>
 
+        <!-- ── Whole-number slider (link floor, local depth) ── -->
+        <Style x:Key="GraphStepSliderStyle" TargetType="Slider"
+               BasedOn="{StaticResource GraphSliderStyle}">
+            <Setter Property="Minimum"       Value="0"/>
+            <Setter Property="Maximum"       Value="5"/>
+            <Setter Property="SmallChange"   Value="1"/>
+            <Setter Property="LargeChange"   Value="1"/>
+            <Setter Property="TickFrequency" Value="1"/>
+        </Style>
+
         <!-- ── Zoom control button (30×30) ── -->
         <Style x:Key="GraphZoomButtonStyle" TargetType="Button">
             <Setter Property="Width"      Value="30"/>
@@ -126,6 +144,21 @@
                          Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,10"/>
 
+                <!-- Link floor: 1 already clears every orphan note off the canvas -->
+                <!-- Value FIRST, label last: DockPanel.LastChildFill is on, and the last child
+                     ignores its Dock and fills the leftover space — putting the value last would
+                     glue the number to the label instead of pinning it right. -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="{Binding MinDegree, Mode=OneWay}"
+                               Foreground="{DynamicResource GraphValueBrush}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="Enlaces mínimos" Style="{StaticResource GraphSliderLabel}"/>
+                </DockPanel>
+                <Slider Style="{StaticResource GraphStepSliderStyle}"
+                        Value="{Binding MinDegree}" Margin="0,0,0,10"
+                        ToolTip="0 muestra todo. 1 esconde las notas sin ningún enlace."/>
+
                 <!-- Local graph toggle -->
                 <DockPanel Margin="0,0,0,4">
                     <ToggleButton DockPanel.Dock="Right"
@@ -136,39 +169,54 @@
                                TextWrapping="Wrap" Margin="0,0,8,0"/>
                 </DockPanel>
 
+                <!-- Reach of local mode, only meaningful while it is on -->
+                <StackPanel Margin="0,6,0,0" IsEnabled="{Binding LocalGraph}">
+                    <DockPanel Margin="0,0,0,2">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding LocalDepth, Mode=OneWay}"
+                                   Foreground="{DynamicResource GraphValueBrush}"
+                                   FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Text="Saltos" Style="{StaticResource GraphSliderLabel}"/>
+                    </DockPanel>
+                    <Slider Style="{StaticResource GraphStepSliderStyle}"
+                            Minimum="1" Maximum="3"
+                            Value="{Binding LocalDepth}"
+                            ToolTip="1 = solo las notas enlazadas directamente. 3 = tres saltos de distancia."/>
+                </StackPanel>
+
                 <Separator Margin="0,10" Background="{DynamicResource BorderBrush}"/>
 
                 <TextBlock Text="FUERZAS" Style="{StaticResource GraphSectionHeader}"/>
 
                 <!-- Central force -->
                 <DockPanel Margin="0,0,0,2">
-                    <TextBlock Text="Fuerza central" Style="{StaticResource GraphSliderLabel}"/>
                     <TextBlock DockPanel.Dock="Right"
                                Text="{Binding ForceCenter, StringFormat=0.0}"
                                Foreground="{DynamicResource GraphValueBrush}"
                                FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="Fuerza central" Style="{StaticResource GraphSliderLabel}"/>
                 </DockPanel>
                 <Slider Style="{StaticResource GraphSliderStyle}"
                         Value="{Binding ForceCenter}" Margin="0,0,0,10"/>
 
                 <!-- Repulsion -->
                 <DockPanel Margin="0,0,0,2">
-                    <TextBlock Text="Repulsión" Style="{StaticResource GraphSliderLabel}"/>
                     <TextBlock DockPanel.Dock="Right"
                                Text="{Binding ForceRepel, StringFormat=0.0}"
                                Foreground="{DynamicResource GraphValueBrush}"
                                FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="Repulsión" Style="{StaticResource GraphSliderLabel}"/>
                 </DockPanel>
                 <Slider Style="{StaticResource GraphSliderStyle}"
                         Value="{Binding ForceRepel}" Margin="0,0,0,10"/>
 
                 <!-- Links -->
                 <DockPanel Margin="0,0,0,2">
-                    <TextBlock Text="Enlaces" Style="{StaticResource GraphSliderLabel}"/>
                     <TextBlock DockPanel.Dock="Right"
                                Text="{Binding ForceLink, StringFormat=0.0}"
                                Foreground="{DynamicResource GraphValueBrush}"
                                FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="Enlaces" Style="{StaticResource GraphSliderLabel}"/>
                 </DockPanel>
                 <Slider Style="{StaticResource GraphSliderStyle}"
                         Value="{Binding ForceLink}" Margin="0,0,0,4"/>
@@ -176,13 +224,97 @@
                 <Separator Margin="0,10" Background="{DynamicResource BorderBrush}"/>
 
                 <TextBlock Text="MOSTRAR" Style="{StaticResource GraphSectionHeader}"/>
-                <DockPanel>
+
+                <!-- Node size. Goes through the radii, not the drawing, so the collision pass and
+                     the camera framing follow along — see GraphMetrics.Assign. -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="{Binding NodeScale, StringFormat=0.0}"
+                               Foreground="{DynamicResource GraphValueBrush}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Text="Tamaño de nodos" Style="{StaticResource GraphSliderLabel}"/>
+                </DockPanel>
+                <Slider Style="{StaticResource GraphSliderStyle}"
+                        Value="{Binding NodeScale}" Margin="0,0,0,10"
+                        ToolTip="Achicá los nodos si el grafo se ve apelotonado."/>
+
+                <DockPanel Margin="0,0,0,6">
                     <ToggleButton DockPanel.Dock="Right"
                                   Style="{StaticResource GraphToggleStyle}"
                                   IsChecked="{Binding ShowLabels}"/>
                     <TextBlock Text="Etiquetas" Style="{StaticResource GraphSliderLabel}"/>
                 </DockPanel>
+
+                <!-- Only offered when the vault has more than one top-level folder;
+                     in a flat vault it would be a switch that visibly does nothing. -->
+                <DockPanel Margin="0,0,0,6"
+                           Visibility="{Binding HasGroups, Converter={StaticResource BoolToVis}}">
+                    <ToggleButton DockPanel.Dock="Right"
+                                  Style="{StaticResource GraphToggleStyle}"
+                                  IsChecked="{Binding ClusterByFolder}"/>
+                    <TextBlock Text="Agrupar por carpeta"
+                               Style="{StaticResource GraphSliderLabel}"
+                               TextWrapping="Wrap" Margin="0,0,8,0"/>
+                </DockPanel>
+
+                <DockPanel>
+                    <ToggleButton DockPanel.Dock="Right"
+                                  Style="{StaticResource GraphToggleStyle}"
+                                  IsChecked="{Binding ThreeD}"/>
+                    <TextBlock Text="Vista 3D"
+                               Style="{StaticResource GraphSliderLabel}"
+                               ToolTip="Arrastrá sobre el fondo para girar el grafo. Con Shift, lo desplazás."/>
+                </DockPanel>
             </StackPanel>
+        </Border>
+
+        <!-- ── Folder legend (top-right) ──
+             Hidden entirely in a flat vault: one row of one colour explains nothing. -->
+        <Border Width="200" MaxHeight="320"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="14"
+                Background="{DynamicResource GraphPanelBackground}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14,12"
+                Visibility="{Binding HasGroups, Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.35" Color="Black"/>
+            </Border.Effect>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="CARPETAS"
+                           Style="{StaticResource GraphSectionHeader}"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="0,0,0,5">
+                                    <!-- Click the row to mute or bring back a whole area -->
+                                    <CheckBox DockPanel.Dock="Right"
+                                              IsChecked="{Binding IsVisible}"
+                                              VerticalAlignment="Center"
+                                              Foreground="{DynamicResource Foreground}"
+                                              ToolTip="Mostrar u ocultar esta carpeta"/>
+                                    <Ellipse Width="9" Height="9" Margin="0,0,7,0"
+                                             VerticalAlignment="Center"
+                                             Fill="{Binding ColorHex}"/>
+                                    <TextBlock Text="{Binding Count}" DockPanel.Dock="Right"
+                                               FontSize="11" Margin="6,0,8,0"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SubtleForeground}"/>
+                                    <TextBlock Text="{Binding Name}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Name}"
+                                               Foreground="{DynamicResource Foreground}"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
         </Border>
 
         <!-- ── Legend / counters (bottom-left) ── -->
@@ -193,11 +325,25 @@
                 BorderThickness="1"
                 CornerRadius="6"
                 Padding="12,7">
-            <TextBlock FontSize="11" Foreground="{DynamicResource SubtleForeground}">
-                <Run Text="{Binding NoteCount, Mode=OneWay}"/><Run Text=" notas"/>
-                <Run Text="  ·  "/>
-                <Run Text="{Binding LinkCount, Mode=OneWay}"/><Run Text=" enlaces"/>
-            </TextBlock>
+            <Grid>
+                <!-- Nothing filtered: plain totals. -->
+                <TextBlock FontSize="11" Foreground="{DynamicResource SubtleForeground}"
+                           Visibility="{Binding IsFiltered, Converter={StaticResource InverseBoolToVis}}">
+                    <Run Text="{Binding NoteCount, Mode=OneWay}"/><Run Text=" notas"/>
+                    <Run Text="  ·  "/>
+                    <Run Text="{Binding LinkCount, Mode=OneWay}"/><Run Text=" enlaces"/>
+                </TextBlock>
+                <!-- Filtered: say how much is hidden, so a control left at the wrong value
+                     never looks like the vault lost notes. -->
+                <TextBlock FontSize="11" Foreground="{DynamicResource SubtleForeground}"
+                           Visibility="{Binding IsFiltered, Converter={StaticResource BoolToVis}}">
+                    <Run Text="{Binding VisibleNoteCount, Mode=OneWay}"/><Run Text=" de "/>
+                    <Run Text="{Binding NoteCount, Mode=OneWay}"/><Run Text=" notas"/>
+                    <Run Text="  ·  "/>
+                    <Run Text="{Binding VisibleLinkCount, Mode=OneWay}"/><Run Text=" de "/>
+                    <Run Text="{Binding LinkCount, Mode=OneWay}"/><Run Text=" enlaces"/>
+                </TextBlock>
+            </Grid>
         </Border>
 
         <!-- ── Zoom controls (bottom-right) ── -->
