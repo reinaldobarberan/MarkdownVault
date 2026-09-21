@@ -149,6 +149,18 @@ public partial class MainViewModel : ObservableObject
     {
         var group = new EditorGroupViewModel(_fileService, _markdownService, _pluginRegistry, _dialogService);
 
+        // Estado del workbench que TODA pane hereda al nacer. Sin esto, el pane B creado por
+        // EnterSplit — o restaurado desde settings, que ocurre DESPUÉS del bloque "Apply
+        // persisted settings" del ctor — arranca con IsDarkTheme = false y su preview se
+        // renderiza en claro aunque la app esté en oscuro (el WebView es único y sigue al
+        // FocusedGroup, SE-8: basta enfocar B para ver el fondo blanco). El auto-save tenía
+        // el mismo agujero: ConfigureAutoSave sólo se aplicaba a los grupos existentes.
+        // _settings es null para el PRIMER grupo (el ctor siembra Groups antes de cargar
+        // settings, invariante de orden §5.1) y ese caso lo cubre el propio bloque del ctor.
+        group.IsDarkTheme = IsDarkTheme;
+        if (_settings is not null)
+            group.ConfigureAutoSave(_settings.AutoSaveEnabled, _settings.AutoSaveIntervalSec);
+
         group.StatusSink = msg => StatusMessage = msg;
 
         // Path-uniqueness invariant (Phase 3, HARD GATE): if another group already owns the

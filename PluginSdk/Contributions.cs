@@ -28,6 +28,11 @@ public sealed class PluginCommand
     public string  Title   { get; init; } = "";
     public string? Icon    { get; init; }
     public Action<IEditorContext> Execute { get; init; } = _ => { };
+
+    /// <summary>Atajo opcional, ej. "Ctrl+Shift+V". Si choca con un atajo del host o de
+    /// otro plugin, o no parsea, el host lo descarta y lo registra en plugins.log; el
+    /// comando sigue funcionando por clic. Nunca falla la activación.</summary>
+    public string? Shortcut { get; init; }
 }
 
 /// <summary>Un grupo de comandos que la UI renderiza como un menú desplegable.</summary>

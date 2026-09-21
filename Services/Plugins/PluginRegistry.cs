@@ -38,6 +38,18 @@ public sealed class PluginRegistry
     public IReadOnlyList<PluginCommandGroup> CommandGroups =>
         _commandGroups.Where(x => _enabled.Contains(x.Owner)).Select(x => x.Group).ToList();
 
+    /// <summary>
+    /// Igual que <see cref="Commands"/> pero SIN soltar el dueño (SDK 1.6.0, atajos de
+    /// plugin). <c>PluginShortcutBinder</c> necesita saber A QUÉ PLUGIN pertenece cada
+    /// comando para loggear un choque nombrando al plugin, no solo al comando.
+    /// </summary>
+    public IReadOnlyList<(string Owner, PluginCommand Cmd)> OwnedCommands =>
+        _commands.Where(x => _enabled.Contains(x.Owner)).ToList();
+
+    /// <summary>Igual que <see cref="OwnedCommands"/> pero para los grupos (ej. "Medios").</summary>
+    public IReadOnlyList<(string Owner, PluginCommandGroup Group)> OwnedCommandGroups =>
+        _commandGroups.Where(x => _enabled.Contains(x.Owner)).ToList();
+
     public IReadOnlyList<PluginPanel> Panels =>
         _panels.Where(x => _enabled.Contains(x.Owner)).Select(x => x.Panel).ToList();
 

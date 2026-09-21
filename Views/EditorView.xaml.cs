@@ -245,7 +245,15 @@ public partial class EditorView : UserControl, IFindReplaceTarget
     {
         if (_vm is null) { base.OnPreviewKeyDown(e); return; }
 
-        if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
+        // SDK 1.6.0 (atajos de plugin): estas cuatro comparaciones testean contra las
+        // MISMAS instancias de KeyGesture que HostGestures.EditorConsumed expone —
+        // nunca literales Key/ModifierKeys duplicados. Así, el conjunto "reservado" que
+        // arma PluginShortcutBinder y lo que esta rama realmente intercepta son,
+        // literalmente, el mismo objeto: no pueden divergir con el tiempo. KeyGesture.
+        // Matches ya maneja Key.System (combos con Alt) por su cuenta; ninguno de estos
+        // cuatro gestos usa Alt, así que el comportamiento no cambia un bit respecto de
+        // la comparación manual anterior.
+        if (HostGestures.EditorSave.Matches(this, e))
         {
             // Esta rama SÍ se ejecuta desde que SaveCommand declara CanExecute. Mientras estuvo
             // «siempre habilitado», el else era código muerto y Ctrl+S sin archivo abría el
@@ -265,16 +273,15 @@ public partial class EditorView : UserControl, IFindReplaceTarget
         // Document.Insert, que se saltea el IsReadOnly de AvalonEdit.
         if (!_vm.HasOpenDocument) { base.OnPreviewKeyDown(e); return; }
 
-        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control
-            && Clipboard.ContainsImage())
+        if (HostGestures.EditorPasteImage.Matches(this, e) && Clipboard.ContainsImage())
         {
             PasteClipboardImage();
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.B && Keyboard.Modifiers == ModifierKeys.Control)
+        if (HostGestures.EditorBold.Matches(this, e))
         { _vm.InsertBoldCommand.Execute(null);   e.Handled = true; return; }
-        if (e.Key == Key.I && Keyboard.Modifiers == ModifierKeys.Control)
+        if (HostGestures.EditorItalic.Matches(this, e))
         { _vm.InsertItalicCommand.Execute(null); e.Handled = true; return; }
 
         base.OnPreviewKeyDown(e);
