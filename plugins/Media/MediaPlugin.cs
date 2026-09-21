@@ -73,11 +73,11 @@ public sealed class MediaPlugin : IPlugin
         {
             Id    = "core.media.insertar",
             Title = "Medios",
-            Icon  = "🎬",
+            Icon  = "\uE714",   // Segoe MDL2 Assets · Video
             Commands =
             [
-                Command("video", "Insertar video…", "🎬", MediaKind.Video),
-                Command("audio", "Insertar audio…", "🎧", MediaKind.Audio)
+                Command("video", "Insertar video…", "\uE714", MediaKind.Video),
+                Command("audio", "Insertar audio…", "\uE8D6", MediaKind.Audio)
             ]
         });
 
