@@ -229,6 +229,96 @@ public class FileServiceTests : IDisposable
         Assert.StartsWith(Path.Combine(_rootA, "attachments"), dest);
     }
 
+    // ─── Anchored links must never create a junk file (link-anchors change, R3) ─────────────
+    //
+    // The central regression this change closes: before the fix, BOTH FileService and its
+    // callers appended ".md" to the UNSPLIT target, so "Nota#Sección" minted a junk file
+    // literally named "Nota#Sección.md" next to the real note. These assert, with a real temp
+    // directory (no mocking), that no such file EVER appears — for the found case, the
+    // created-on-demand case, block anchors, and the intra-document guard.
+
+    [Fact]
+    public void ResolveInternalLink_heading_anchor_opens_the_existing_note_without_a_junk_file()
+    {
+        var notaPath = Path.Combine(_rootA, "Nota.md");
+        File.WriteAllText(notaPath, "# Nota\n\n## Sección\n\nTexto.");
+        var sourcePath = Path.Combine(_rootA, "Source.md");
+        File.WriteAllText(sourcePath, "[[Nota#Sección]]");
+        _svc.AddRoot(_rootA);
+
+        var resolved = _svc.ResolveInternalLink(Path.GetFullPath(_rootA), "Nota#Sección", sourcePath);
+
+        Assert.Equal(Path.GetFullPath(notaPath), Path.GetFullPath(resolved));
+        AssertNoJunkAnchorFileExists(_rootA);
+    }
+
+    [Fact]
+    public void ResolveInternalLink_block_anchor_opens_the_existing_note_without_a_junk_file()
+    {
+        var notaPath = Path.Combine(_rootA, "Nota.md");
+        File.WriteAllText(notaPath, "# Nota\n\nUn párrafo marcado ^a1b2c3");
+        var sourcePath = Path.Combine(_rootA, "Source.md");
+        File.WriteAllText(sourcePath, "[[Nota#^a1b2c3]]");
+        _svc.AddRoot(_rootA);
+
+        var resolved = _svc.ResolveInternalLink(Path.GetFullPath(_rootA), "Nota#^a1b2c3", sourcePath);
+
+        Assert.Equal(Path.GetFullPath(notaPath), Path.GetFullPath(resolved));
+        AssertNoJunkAnchorFileExists(_rootA);
+    }
+
+    [Fact]
+    public void ResolveInternalLink_anchored_target_creates_only_the_note_never_a_file_named_after_the_anchor()
+    {
+        var sourcePath = Path.Combine(_rootA, "Source.md");
+        File.WriteAllText(sourcePath, "[[Nueva#Sección]]");
+        _svc.AddRoot(_rootA);
+
+        var resolved = _svc.ResolveInternalLink(Path.GetFullPath(_rootA), "Nueva#Sección", sourcePath);
+
+        Assert.Equal(Path.GetFullPath(Path.Combine(_rootA, "Nueva.md")), Path.GetFullPath(resolved));
+        Assert.True(File.Exists(resolved));
+        AssertNoJunkAnchorFileExists(_rootA);
+    }
+
+    [Fact]
+    public void ResolveInternalLink_intra_document_anchor_throws_instead_of_creating_a_bogus_file()
+    {
+        var sourcePath = Path.Combine(_rootA, "Source.md");
+        File.WriteAllText(sourcePath, "[[#Conclusiones]]");
+        _svc.AddRoot(_rootA);
+        var filesBefore = Directory.GetFiles(_rootA, "*", SearchOption.AllDirectories).Length;
+
+        Assert.Throws<InvalidOperationException>(
+            () => _svc.ResolveInternalLink(Path.GetFullPath(_rootA), "#Conclusiones", sourcePath));
+
+        var filesAfter = Directory.GetFiles(_rootA, "*", SearchOption.AllDirectories).Length;
+        Assert.Equal(filesBefore, filesAfter); // no file was created by the failed attempt
+    }
+
+    [Fact]
+    public void ResolveInternalLink_legacy_single_arg_overload_also_never_creates_a_junk_file()
+    {
+        // The legacy overload (no explicit root) resolves its own owning root and delegates
+        // entirely to the root-aware overload — it must inherit the same defense in depth.
+        var notaPath = Path.Combine(_rootA, "Nota.md");
+        File.WriteAllText(notaPath, "# Nota\n\n## Sección\n\nTexto.");
+        var sourcePath = Path.Combine(_rootA, "Source.md");
+        File.WriteAllText(sourcePath, "[[Nota#Sección]]");
+        _svc.AddRoot(_rootA);
+
+        var resolved = _svc.ResolveInternalLink("Nota#Sección", sourcePath);
+
+        Assert.Equal(Path.GetFullPath(notaPath), Path.GetFullPath(resolved));
+        AssertNoJunkAnchorFileExists(_rootA);
+    }
+
+    private static void AssertNoJunkAnchorFileExists(string root)
+    {
+        var junkFiles = Directory.GetFiles(root, "*#*", SearchOption.AllDirectories);
+        Assert.Empty(junkFiles);
+    }
+
     public void Dispose()
     {
         _svc.Dispose();

@@ -54,9 +54,19 @@ public sealed class WpfDialogService : IDialogService
         return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
 
+    /// <summary>
+    /// Link-anchors change: the dialog's own anchor-aware second step needs to read an arbitrary
+    /// note's headings/markers, which needs a <see cref="FileService"/> and a
+    /// <see cref="MarkdownService"/> — reached here from the app-wide statics (this class is
+    /// already documented as "the untestable edge", same spirit as <c>MainWindow.xaml.cs</c>'s
+    /// <c>Plugins_Click</c> reaching <c>App.PluginManager</c>) and handed to the dialog
+    /// explicitly, so <c>LinkPickerDialog</c> itself stays decoupled from <c>App</c>.
+    /// </summary>
     public string? PickInternalLinkMarkdown(IReadOnlyList<string> vaultFiles, string currentFilePath, string vaultRoot)
     {
-        var dlg = new Views.LinkPickerDialog(new List<string>(vaultFiles), currentFilePath, vaultRoot)
+        var dlg = new Views.LinkPickerDialog(
+            new List<string>(vaultFiles), currentFilePath, vaultRoot,
+            App.FileService, App.MarkdownService)
         {
             Owner = Application.Current.MainWindow
         };

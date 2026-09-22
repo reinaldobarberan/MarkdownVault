@@ -21,6 +21,10 @@ public interface IDialogService
     // InsertImage :602-607
     string? AskImagePath();
 
-    // InsertInternalLink :590-596 — returns the markdown the picker produced (dlg.ResultMarkdown)
+    // InsertInternalLink :590-596 — returns the markdown the picker produced (dlg.ResultMarkdown).
+    // Link-anchors change: the picker's second step (after a note is chosen) also offers the
+    // whole note, its headings, and any already-marked paragraphs from that SAME owning root —
+    // never writing a marker into a file that isn't the caller's own focused buffer. The
+    // signature is unchanged; anchor-awareness is entirely internal to the dialog.
     string? PickInternalLinkMarkdown(IReadOnlyList<string> vaultFiles, string currentFilePath, string vaultRoot);
 }

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
@@ -207,8 +208,81 @@ public partial class MainViewModel : ObservableObject
         // navigation (not plain tab switches), so the tree never moves on its own otherwise.
         group.LinkNavigated += path => FileTree.RevealFile(path);
 
+        // Preview's own one-shot pending anchor (design decision #9, Q7), parallel to the
+        // editor's ConsumePendingAnchor but resolved to a DOM id up front — group.Content is
+        // already the destination note's text by the time AnchorNavigated fires (OnActiveTabChanged
+        // sets Content and calls RefreshPreview synchronously, before NavigateToLinkAsync's
+        // `await OpenFileAsync` returns) — so there is no need to re-resolve it later inside
+        // MainWindow.PushPreview, which only needs to ask for the already-computed id.
+        group.AnchorNavigated += target => _pendingPreviewAnchorId = ResolveAnchorDomId(group.Content, target);
+
         return group;
     }
+
+    // ─── Preview anchor scrolling (link-anchors change, design decisions #9/#10) ──────────────
+
+    // Single field, not per-group: there is exactly one WebView2 preview surface, always
+    // showing FocusedGroup's content (MainWindow.BindPreviewSource) — a background pane's
+    // AnchorNavigated firing while it isn't the one on screen is harmless, since PushPreview
+    // only ever consumes this against whatever it's ABOUT to show.
+    private string? _pendingPreviewAnchorId;
+
+    /// <summary>
+    /// Resolves an anchor target to the DOM id <c>window.__mvScrollToId</c> expects — a
+    /// SEPARATE two-pass lookup from <see cref="AnchorLocator.Find"/>, which resolves to a
+    /// source-text OFFSET for the editor and needs the Markdig AST types (<c>HeadingBlock</c>/
+    /// <c>ParagraphBlock</c>) directly. The preview only ever needs the already-pure
+    /// <see cref="MarkdownService.GetHeadings"/>/<see cref="MarkdownService.GetBlockMarkers"/>
+    /// tuples, so this stays out of <c>Helpers</c> entirely — it isn't part of the design's
+    /// Interfaces list, but decision #10 ("scroll the preview to an id") is unimplementable
+    /// without SOME way to turn an anchor into that id, and re-deriving AST types outside
+    /// <c>AnchorLocator</c> just to duplicate ITS two-pass match would be worse. Internal so
+    /// <c>MainWindow</c> can reuse it directly for the intra-document case, which never goes
+    /// through <see cref="EditorGroupViewModel.AnchorNavigated"/> at all.
+    /// </summary>
+    internal string? ResolveAnchorDomId(string markdown, LinkTarget target)
+    {
+        if (target.Kind == AnchorKind.Block)
+        {
+            var hasMarker = _markdownService.GetBlockMarkers(markdown)
+                .Any(m => string.Equals(m.Id, target.Anchor, StringComparison.Ordinal));
+            return hasMarker ? BlockAnchorExtension.IdPrefix + target.Anchor : null;
+        }
+
+        if (target.Kind == AnchorKind.Heading)
+        {
+            var headings = _markdownService.GetHeadings(markdown);
+
+            foreach (var heading in headings)
+                if (string.Equals(heading.Id, target.Anchor, StringComparison.Ordinal))
+                    return heading.Id;
+
+            foreach (var heading in headings)
+                if (string.Equals(heading.Text, target.Anchor, StringComparison.OrdinalIgnoreCase))
+                    return heading.Id;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// One-shot consumption of the preview's pending anchor id (design decision #9), called by
+    /// <c>MainWindow.PushPreview</c> after the destination page/patch actually exists — never
+    /// before, since <c>window.__mvScrollToId</c> only exists once the page shell (
+    /// <c>MarkdownService.WrapInPage</c>) has loaded. Consumed-and-cleared so a debounced
+    /// typing re-render never steals the user's scroll on a later, unrelated push.
+    /// </summary>
+    internal string? ConsumePendingPreviewAnchor()
+    {
+        var id = _pendingPreviewAnchorId;
+        _pendingPreviewAnchorId = null;
+        return id;
+    }
+
+    /// <summary>Discards the pending preview anchor without applying it — used when the
+    /// destination page never really renders (e.g. the blank placeholder pushed when no tab is
+    /// focused), so a stale id can't leak into some LATER, unrelated navigation.</summary>
+    internal void DiscardPendingPreviewAnchor() => _pendingPreviewAnchorId = null;
 
     /// <summary>
     /// Re-renders every pane's preview after the active plugin set changes (design §2.1/App

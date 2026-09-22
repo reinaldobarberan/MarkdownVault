@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
@@ -107,6 +108,17 @@ public partial class EditorGroupViewModel : ObservableObject
     /// switches — internal-link navigation is the sole trigger for auto-reveal.</summary>
     public event Action<string>? LinkNavigated;
 
+    /// <summary>
+    /// Raised alongside <see cref="LinkNavigated"/> whenever <see cref="NavigateToLinkAsync"/>
+    /// actually carries an anchor to a note this group ended up showing (design decision #9,
+    /// Q7) — so the workbench can scroll the PREVIEW to the same spot the editor is about to
+    /// jump to. Never raised for a plain (anchor-less) navigation, and never raised when
+    /// <see cref="OpenFileAsync"/> redirected elsewhere (see the guard in
+    /// <see cref="NavigateToLinkAsync"/>) — only a navigation that actually landed on THIS
+    /// group's requested tab fires it.
+    /// </summary>
+    public event Action<LinkTarget>? AnchorNavigated;
+
     // ─── Observable state ────────────────────────────────────────────────────
 
     [ObservableProperty] private string  _currentFilePath = string.Empty;
@@ -126,6 +138,12 @@ public partial class EditorGroupViewModel : ObservableObject
     // ─── Internal-link navigation ────────────────────────────────────────────
 
     private readonly Stack<string> _navigationStack = new();
+
+    // One-shot pending anchor for the note NavigateToLinkAsync just opened (design decision
+    // #5). Set ONLY by NavigateToLinkAsync — a plain tab switch (SwitchToTab, file-tree open,
+    // GoBack) never touches it, so it can never fight the caret/scroll restore that already
+    // runs first in EditorView's Loaded continuation for those paths.
+    private LinkTarget? _pendingAnchor;
 
     [ObservableProperty] private bool   _canGoBack;
     [ObservableProperty] private string _goBackFileName = string.Empty;
@@ -245,6 +263,7 @@ public partial class EditorGroupViewModel : ObservableObject
         InsertNumberedListCommand.NotifyCanExecuteChanged();
         InsertLinkCommand.NotifyCanExecuteChanged();
         InsertInternalLinkCommand.NotifyCanExecuteChanged();
+        CopyParagraphLinkCommand.NotifyCanExecuteChanged();
         InsertImageCommand.NotifyCanExecuteChanged();
 
         foreach (var item in PluginToolbarItems)
@@ -291,10 +310,15 @@ public partial class EditorGroupViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Navigates to a file via an internal link.  Pushes the current file
-    /// onto the navigation stack so the user can go back.
+    /// Navigates to a file via an internal link. Pushes the current file onto the navigation
+    /// stack so the user can go back. <paramref name="anchor"/> is the anchor half of the
+    /// original <see cref="LinkTarget"/> exactly as it appeared after the <c>#</c> — heading
+    /// text as written, or a block id with its <c>^</c> sigil still attached (e.g. <c>"^a1b2c3"</c>)
+    /// — so it round-trips through <see cref="LinkTarget.Parse"/> below instead of re-deriving
+    /// the sigil check a second time (design decision #1's single source of truth, decision #5).
+    /// The default parameter keeps every pre-Phase-4 call site compiling unchanged.
     /// </summary>
-    public async Task NavigateToLinkAsync(string resolvedPath)
+    public async Task NavigateToLinkAsync(string resolvedPath, string? anchor = null)
     {
         if (ActiveTab is not null)
         {
@@ -302,8 +326,44 @@ public partial class EditorGroupViewModel : ObservableObject
             CanGoBack      = true;
             GoBackFileName = ActiveTab.FileName;
         }
+
+        _pendingAnchor = anchor is null ? null : LinkTarget.Parse("#" + anchor);
+
+        // A link to the note ALREADY active in THIS group is a no-op switch — OpenFileAsync's
+        // SwitchToTab early-returns (`tab == ActiveTab`) without ever changing ActiveTab, so
+        // nothing will raise ActiveTabChanged and the Loaded-tick that consumes a pending
+        // anchor never runs. Capture that BEFORE calling OpenFileAsync so it can be dropped
+        // below instead of sitting stale until some LATER, unrelated switch wrongly replays it.
+        var wasAlreadyActive = ActiveTab is not null &&
+            string.Equals(ActiveTab.FilePath, resolvedPath, StringComparison.OrdinalIgnoreCase);
+
         await OpenFileAsync(resolvedPath);
+
+        // RedirectIfOwnedElsewhere (Phase 3, split editor) can also let OpenFileAsync return
+        // WITHOUT ever touching THIS group's ActiveTab — the file opened in a different group's
+        // pane instead, focused there — which is the same "nothing will ever consume this"
+        // situation from the other direction. Either way the safe default is "no scroll" over
+        // "scroll the wrong pane, or scroll on some unrelated later switch".
+        if (wasAlreadyActive ||
+            !string.Equals(ActiveTab?.FilePath, resolvedPath, StringComparison.OrdinalIgnoreCase))
+            _pendingAnchor = null;
+
         LinkNavigated?.Invoke(resolvedPath);
+        if (_pendingAnchor is { } target)
+            AnchorNavigated?.Invoke(target);
+    }
+
+    /// <summary>
+    /// One-shot consumption of the anchor set by <see cref="NavigateToLinkAsync"/> (design
+    /// decision #5). Called by <c>EditorView</c> inside the existing Loaded continuation,
+    /// AFTER the caret/scroll restore — a plain tab switch never sets this, and the anchor jump
+    /// always wins the ordering race against that restore because it runs strictly after it.
+    /// </summary>
+    internal LinkTarget? ConsumePendingAnchor()
+    {
+        var pending = _pendingAnchor;
+        _pendingAnchor = null;
+        return pending;
     }
 
     [RelayCommand]
@@ -719,6 +779,13 @@ public partial class EditorGroupViewModel : ObservableObject
     /// <summary>Raised when the toolbar requests a text insertion/wrapping at the caret.</summary>
     public event Action<string, string>? InsertionRequested;
 
+    /// <summary>
+    /// Pide a la vista que marque el párrafo del cursor y copie su enlace al portapapeles.
+    /// El ViewModel no puede resolverlo solo: «qué párrafo» depende del caret de AvalonEdit,
+    /// que vive en la vista. Mismo reparto que <see cref="InsertionRequested"/>.
+    /// </summary>
+    public event Action? ParagraphLinkRequested;
+
     /// <summary>Raised to insert a complete snippet (e.g. a Mermaid example) verbatim at the caret.</summary>
     public event Action<string>? SnippetRequested;
 
@@ -828,6 +895,16 @@ public partial class EditorGroupViewModel : ObservableObject
 
         InsertionRequested?.Invoke(markdown, "");
     }
+
+    /// <summary>
+    /// Botón de barra equivalente al «Copiar enlace a este párrafo» del menú contextual: opera
+    /// sobre el párrafo del CURSOR en vez de sobre el del click derecho. El marcador se escribe
+    /// solo en este buffer abierto y enfocado, nunca en un archivo cerrado (frontera de escritura
+    /// de marcadores de la spec) — la vista es quien lo garantiza, tocando únicamente su propio
+    /// documento vivo.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasOpenDocument))]
+    private void CopyParagraphLink() => ParagraphLinkRequested?.Invoke();
 
     [RelayCommand(CanExecute = nameof(HasOpenDocument))]
     private void InsertImage()

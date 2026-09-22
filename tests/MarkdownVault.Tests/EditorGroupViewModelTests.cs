@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using MarkdownVault.Helpers;
 using MarkdownVault.PluginSdk;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
@@ -367,6 +368,96 @@ public class EditorGroupViewModelTests : IDisposable
                      Path.GetFileName(Directory.GetFiles(Path.Combine(vaultB, "attachments"))[0]) +
                      ")", markdown);
         Assert.False(Directory.Exists(Path.Combine(vaultA, "attachments")));
+    }
+
+    // ─── Anchor navigation (link-anchors change, design decisions #1/#5/#9) ─────────────────
+    //
+    // AnchorLocator.Find, SelectAndReveal and the actual scroll are WPF/AvalonEdit-only and stay
+    // manual-verification (design.md's own Testing Strategy table). But NavigateToLinkAsync,
+    // ConsumePendingAnchor and AnchorNavigated live entirely on this ViewModel — no TextEditor,
+    // no WebView2 — so they're testable the same headless way as every other VM behavior above.
+
+    [Fact]
+    public async Task NavigateToLinkAsync_WithHeadingAnchor_SetsAOneShotPendingAnchor()
+    {
+        var vm = CreateVm();
+        await vm.OpenFileAsync(WriteFile("a.md", "# A"));
+        var pathB = WriteFile("b.md", "# B\n\n## Sección\n\nTexto.");
+
+        await vm.NavigateToLinkAsync(pathB, "Sección");
+
+        var pending = vm.ConsumePendingAnchor();
+        Assert.NotNull(pending);
+        Assert.Equal(AnchorKind.Heading, pending!.Value.Kind);
+        Assert.Equal("Sección", pending.Value.Anchor);
+
+        // One-shot: a second consumption must come back empty.
+        Assert.Null(vm.ConsumePendingAnchor());
+    }
+
+    [Fact]
+    public async Task NavigateToLinkAsync_WithBlockAnchor_KeepsTheSigilStrippedKindAsBlock()
+    {
+        var vm = CreateVm();
+        await vm.OpenFileAsync(WriteFile("a.md", "# A"));
+        var pathB = WriteFile("b.md", "# B\n\nUn párrafo marcado ^a1b2c3");
+
+        // Per apply-progress.md (Phase 4): the anchor round-trips through LinkTarget.Parse("#" +
+        // anchor), so the caller passes the raw post-'#' text WITH the block sigil kept.
+        await vm.NavigateToLinkAsync(pathB, "^a1b2c3");
+
+        var pending = vm.ConsumePendingAnchor();
+        Assert.NotNull(pending);
+        Assert.Equal(AnchorKind.Block, pending!.Value.Kind);
+        Assert.Equal("a1b2c3", pending.Value.Anchor);
+    }
+
+    [Fact]
+    public async Task NavigateToLinkAsync_WithoutAnAnchor_LeavesNoPendingAnchor()
+    {
+        var vm = CreateVm();
+        await vm.OpenFileAsync(WriteFile("a.md", "# A"));
+        var pathB = WriteFile("b.md", "# B");
+
+        await vm.NavigateToLinkAsync(pathB);
+
+        Assert.Null(vm.ConsumePendingAnchor());
+    }
+
+    [Fact]
+    public async Task NavigateToLinkAsync_CrossNote_RaisesAnchorNavigatedWithTheParsedTarget()
+    {
+        var vm = CreateVm();
+        await vm.OpenFileAsync(WriteFile("a.md", "# A"));
+        var pathB = WriteFile("b.md", "# B\n\n## Sección\n\nTexto.");
+        LinkTarget? raised = null;
+        vm.AnchorNavigated += t => raised = t;
+
+        await vm.NavigateToLinkAsync(pathB, "Sección");
+
+        Assert.NotNull(raised);
+        Assert.Equal(AnchorKind.Heading, raised!.Value.Kind);
+        Assert.Equal("Sección", raised.Value.Anchor);
+    }
+
+    [Fact]
+    public async Task NavigateToLinkAsync_SelfReferencingAnchorLink_NeitherFiresNorLeavesAStalePendingAnchor()
+    {
+        // Known, deliberate limitation documented in apply-progress.md (batch 2, Phase 4):
+        // OpenFileAsync's SwitchToTab early-returns when the target is already ActiveTab, so
+        // ActiveTabChanged never fires and the Loaded-tick that would consume _pendingAnchor
+        // never runs either. Without the guard this batch tests for, a stale pending anchor
+        // would sit on the group and get wrongly replayed against a LATER, unrelated tab switch.
+        var vm = CreateVm();
+        var pathA = WriteFile("a.md", "# A\n\n## Sección\n\nTexto.");
+        await vm.OpenFileAsync(pathA);
+        var raisedCount = 0;
+        vm.AnchorNavigated += _ => raisedCount++;
+
+        await vm.NavigateToLinkAsync(pathA, "Sección"); // self-reference: pathA is already active
+
+        Assert.Equal(0, raisedCount);
+        Assert.Null(vm.ConsumePendingAnchor()); // no stale anchor left for a later switch to replay
     }
 
     public void Dispose()

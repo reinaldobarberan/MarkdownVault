@@ -30,7 +30,23 @@ public partial class OpenTab : ObservableObject
 
     [ObservableProperty] private string _content = string.Empty;
     [ObservableProperty] private bool   _isDirty;
-    [ObservableProperty] private int    _scrollOffset;
+
+    /// <summary>
+    /// Posición de lectura del EDITOR, en línea del documento — no en píxeles. El píxel era la
+    /// unidad equivocada para este control: con <c>WordWrap</c> el mismo texto ocupa distinta
+    /// altura según el ancho del panel y el tamaño de fuente, y encima el árbol de alturas de
+    /// AvalonEdit miente al restaurar (ver <see cref="EditorScrollAnchor"/> y
+    /// <c>EditorScrollRestorer</c>).
+    /// </summary>
+    [ObservableProperty] private EditorScrollAnchor _scrollAnchor = EditorScrollAnchor.Top;
+
+    /// <summary>
+    /// Posición de lectura de la VISTA PREVIA (<c>window.scrollY</c>). Va separada del ancla del
+    /// editor a propósito: son dos documentos distintos —texto fuente contra HTML renderizado—
+    /// y no hay correspondencia línea a línea entre ellos.
+    /// </summary>
+    [ObservableProperty] private double _previewScrollY;
+
     [ObservableProperty] private int    _caretOffset;
     [ObservableProperty] private bool   _isActive;
 

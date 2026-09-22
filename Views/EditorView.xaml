@@ -127,6 +127,9 @@
 
                 <Button ToolTip="Insertar enlace web"     Command="{Binding InsertLinkCommand}"         Content="&#xE71B;"  FontFamily="Segoe MDL2 Assets"/>
                 <Button ToolTip="Insertar enlace interno" Command="{Binding InsertInternalLinkCommand}" Content="&#xE8F1;"  FontFamily="Segoe MDL2 Assets"/>
+                <!-- Calderón (¶) en vez de un glifo de Segoe MDL2: la acción es «este párrafo» y
+                     el símbolo lo dice sin depender de que la fuente de iconos tenga el glifo. -->
+                <Button ToolTip="Copiar enlace a este párrafo" Command="{Binding CopyParagraphLinkCommand}" Content="&#x00B6;" FontWeight="Bold"/>
                 <Button ToolTip="Insertar imagen"         Command="{Binding InsertImageCommand}"        Content="&#xEB9F;"  FontFamily="Segoe MDL2 Assets"/>
                 <Separator/>
 

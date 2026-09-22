@@ -1,4 +1,5 @@
 using System.IO;
+using MarkdownVault.Models;
 using MarkdownVault.Services;
 using MarkdownVault.Services.Plugins;
 using MarkdownVault.ViewModels;
@@ -111,9 +112,10 @@ public class WorkbenchInvariantTests : IDisposable
         var path   = WriteFile("d.md", "original");
         await groupA.OpenFileAsync(path);
         var tab = groupA.ActiveTab!;
-        groupA.Content     = "dirty edit";   // mirrors into tab.Content + tab.IsDirty
-        tab.ScrollOffset   = 42;
-        tab.CaretOffset    = 7;
+        groupA.Content      = "dirty edit";   // mirrors into tab.Content + tab.IsDirty
+        tab.ScrollAnchor    = new EditorScrollAnchor(42, 13.5);
+        tab.PreviewScrollY  = 880;
+        tab.CaretOffset     = 7;
 
         vm.MoveTabToOtherGroup(tab);
 
@@ -123,7 +125,8 @@ public class WorkbenchInvariantTests : IDisposable
         Assert.Same(groupB, vm.FocusedGroup);
         Assert.Equal("dirty edit", tab.Content);
         Assert.True(tab.IsDirty);
-        Assert.Equal(42, tab.ScrollOffset);
+        Assert.Equal(new EditorScrollAnchor(42, 13.5), tab.ScrollAnchor);
+        Assert.Equal(880, tab.PreviewScrollY);
         Assert.Equal(7, tab.CaretOffset);
     }
 

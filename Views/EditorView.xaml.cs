@@ -8,6 +8,8 @@ using System.Windows.Input;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
 using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 using MarkdownVault.Services;
@@ -30,9 +32,17 @@ public partial class EditorView : UserControl, IFindReplaceTarget
     // re-runs automatically whenever AvalonEdit rebuilds visual lines.
     private SpellCheckColorizer? _spellColorizer;
 
+    // ─── Posición de lectura ──────────────────────────────────────────────────
+    // Dueño ÚNICO del scroll vertical programático de este panel: restaurar al cambiar de
+    // pestaña y revelar una línea (ancla / Buscar) comparten mecanismo porque comparten causa
+    // raíz — el árbol de alturas de AvalonEdit está frío después de reemplazar el documento.
+    // Ver EditorScrollRestorer para el mecanismo completo.
+    private readonly EditorScrollRestorer _scrollRestorer;
+
     public EditorView()
     {
         InitializeComponent();
+        _scrollRestorer = new EditorScrollRestorer(TextEditor);
         RegisterMarkdownHighlighting();
         TextEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition("Markdown");
 
@@ -71,6 +81,7 @@ public partial class EditorView : UserControl, IFindReplaceTarget
         {
             _vm.PropertyChanged      -= Vm_PropertyChanged;
             _vm.InsertionRequested   -= Vm_InsertionRequested;
+            _vm.ParagraphLinkRequested -= Vm_ParagraphLinkRequested;
             _vm.SnippetRequested     -= Vm_SnippetRequested;
             _vm.ReplaceSelectionRequested -= Vm_ReplaceSelectionRequested;
             _vm.ActiveTabChanged     -= OnActiveTabChanged;
@@ -85,6 +96,7 @@ public partial class EditorView : UserControl, IFindReplaceTarget
 
         _vm.PropertyChanged    += Vm_PropertyChanged;
         _vm.InsertionRequested += Vm_InsertionRequested;
+        _vm.ParagraphLinkRequested += Vm_ParagraphLinkRequested;
         _vm.SnippetRequested   += Vm_SnippetRequested;
         _vm.ReplaceSelectionRequested += Vm_ReplaceSelectionRequested;
         _vm.ActiveTabChanged   += OnActiveTabChanged;
@@ -129,18 +141,33 @@ public partial class EditorView : UserControl, IFindReplaceTarget
 
     // ─── Tab switching ───────────────────────────────────────────────────────
 
-    /// <summary>Saves scroll/caret state into the outgoing tab before a switch.</summary>
+    /// <summary>
+    /// Guarda la posición de lectura y el cursor en la pestaña que sale, antes del cambio.
+    ///
+    /// El ancla se guarda en LÍNEA del documento, no en píxeles: ver
+    /// <see cref="EditorScrollRestorer"/> para por qué el píxel no se puede restaurar con
+    /// <c>WordWrap</c>. Y cuando el editor no se puede medir (panel colapsado por el modo de
+    /// vista, o todavía sin dibujar) <c>Capture</c> devuelve <c>null</c> y NO se pisa lo
+    /// guardado — escribir "arriba de todo" ahí sería perder la posición a mano.
+    /// </summary>
     private void OnActiveTabSaving(OpenTab? tab)
     {
         if (tab is null) return;
-        tab.ScrollOffset = (int)TextEditor.VerticalOffset;
-        tab.CaretOffset  = TextEditor.CaretOffset;
+
+        if (_scrollRestorer.Capture() is { } anchor)
+            tab.ScrollAnchor = anchor;
+
+        tab.CaretOffset = TextEditor.CaretOffset;
     }
 
     /// <summary>Restores the editor state when switching to a new tab.</summary>
     private void OnActiveTabChanged(OpenTab? tab)
     {
         _updatingFromVm = true;
+
+        // Un cambio de pestaña nuevo cancela cualquier asentamiento en vuelo: nunca puede haber
+        // dos restauraciones peleando por el mismo viewport.
+        _scrollRestorer.Cancel();
 
         if (tab is null)
         {
@@ -161,13 +188,87 @@ public partial class EditorView : UserControl, IFindReplaceTarget
                 if (tab.CaretOffset <= TextEditor.Document.TextLength)
                     TextEditor.CaretOffset = tab.CaretOffset;
 
-                TextEditor.ScrollToVerticalOffset(tab.ScrollOffset);
+                // El cursor NO lleva la posición de lectura: el setter de TextEditor.Text lo
+                // manda a 0 en cada swap y quien lee con la rueda del mouse nunca lo movió. La
+                // posición la lleva el ancla, y sola.
+                _scrollRestorer.Restore(tab.ScrollAnchor);
             }
             catch { /* ignore if offset is stale */ }
+
+            // Runs AFTER the caret/scroll restore above (design decision #5) — a plain tab
+            // switch never has a pending anchor, so this is a no-op for it, and when one IS
+            // pending it always wins the ordering race because it's the last thing this tick
+            // does.
+            ConsumePendingAnchorIfAny();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
 
         _updatingFromVm = false;
     }
+
+    // ─── Anchor navigation (link-anchors change) ─────────────────────────────
+
+    /// <summary>
+    /// Resolves and reveals the one-shot pending anchor set by
+    /// <see cref="EditorGroupViewModel.NavigateToLinkAsync"/> against the note that JUST
+    /// finished loading into <see cref="TextEditor"/>. Broken/unsupported anchor (design
+    /// decision #11, spec "Broken Anchor Handling"): the note is already open at the top (no
+    /// extra work needed — nothing scrolled it anywhere else), and the miss is reported via
+    /// <see cref="EditorGroupViewModel.StatusSink"/> so it is never silent and never blocks the
+    /// navigation that already happened.
+    /// </summary>
+    private void ConsumePendingAnchorIfAny()
+    {
+        if (_vm is null) return;
+        if (_vm.ConsumePendingAnchor() is not { } target) return;
+
+        // Must come from MarkdownService.ParsePreviewAst — the SAME pipeline instance that
+        // renders the preview — so a heading's resolved id here never drifts from what's on
+        // screen (design decision #6).
+        var doc  = App.MarkdownService.ParsePreviewAst(TextEditor.Text);
+        var line = AnchorLocator.Find(doc, target);
+
+        if (!RevealAstLine(line))
+            _vm.StatusSink?.Invoke($"No se encontró el ancla «{AnchorDisplay(target)}» en esta nota.");
+    }
+
+    /// <summary>
+    /// Convierte una línea del AST (base 0, la ÚNICA coordenada que sobrevive al preprocesado
+    /// de wikilinks — ver <see cref="MarkdownService.ParsePreviewAst"/>) en un offset del
+    /// documento VIVO y hace scroll hasta ahí. Le pregunta el offset a AvalonEdit en vez de
+    /// tomarlo del AST, así que no puede estar corrido por construcción. Devuelve
+    /// <c>false</c> cuando no había ancla o la línea no existe en este buffer.
+    /// </summary>
+    private bool RevealAstLine(int? astLine)
+    {
+        if (astLine is not { } l) return false;
+
+        var doc = TextEditor.Document;
+        if (doc is null || l < 0 || l >= doc.LineCount) return false;
+
+        SelectAndReveal(doc.GetLineByNumber(l + 1).Offset, 0);
+        return true;
+    }
+
+    /// <summary>
+    /// Intra-document anchor (spec "Intra-Document Anchor Navigation"): resolves against the
+    /// CURRENT buffer only. No tab switch and no Loaded-tick wait is needed — the content is
+    /// already loaded and laid out — so this runs synchronously from the click handler itself,
+    /// unlike the cross-note case above. Broken/unsupported anchor reports via StatusSink
+    /// exactly like the cross-note case instead of doing nothing.
+    /// </summary>
+    private void JumpToIntraDocumentAnchor(LinkTarget target)
+    {
+        if (_vm is null) return;
+
+        var doc  = App.MarkdownService.ParsePreviewAst(TextEditor.Text);
+        var line = AnchorLocator.Find(doc, target);
+
+        if (!RevealAstLine(line))
+            _vm.StatusSink?.Invoke($"No se encontró el ancla «{AnchorDisplay(target)}» en esta nota.");
+    }
+
+    private static string AnchorDisplay(LinkTarget target) =>
+        target.Kind == AnchorKind.Block ? $"^{target.Anchor}" : target.Anchor ?? string.Empty;
 
     // ─── Toolbar insertion ────────────────────────────────────────────────────
 
@@ -194,6 +295,13 @@ public partial class EditorView : UserControl, IFindReplaceTarget
             editor.Document.Insert(editor.CaretOffset, text);
         editor.Focus();
     }
+
+    /// <summary>
+    /// Botón de barra: mismo trabajo que el ítem del menú contextual, pero sobre el párrafo del
+    /// CURSOR. Reusa <see cref="CopyParagraphLink"/> entero — el botón no duplica ni una línea
+    /// de la lógica de marcado, solo elige otro offset.
+    /// </summary>
+    private void Vm_ParagraphLinkRequested() => CopyParagraphLink(TextEditor.CaretOffset);
 
     private void Vm_InsertionRequested(string prefix, string suffix)
     {
@@ -357,8 +465,17 @@ public partial class EditorView : UserControl, IFindReplaceTarget
     }
 
     /// <summary>Selecciona el tramo y hace scroll hasta su línea, sin robarle el foco al
-    /// formulario de búsqueda — el usuario sigue tipeando en la ventana flotante.</summary>
-    private void SelectAndReveal(int offset, int length)
+    /// formulario de búsqueda — el usuario sigue tipeando en la ventana flotante. Internal
+    /// (design decision #6) so the anchor-navigation code further down in this same class can
+    /// reuse it for "scroll to this resolved offset" — the intent is identical, just fed by
+    /// <see cref="AnchorLocator"/> instead of Find/Replace.
+    ///
+    /// El scroll va por <see cref="EditorScrollRestorer"/> y no por <c>ScrollTo(línea, columna)</c>
+    /// porque ese montaba sobre el MISMO árbol de alturas frío que rompía la restauración de
+    /// pestaña: un salto a un ancla en el fondo de una nota larga también quedaba corto (medido:
+    /// aterrizaba en la línea 39 pidiendo la 41). El restaurador vuelve a preguntar hasta que la
+    /// línea está de verdad en pantalla, y se corta solo si el usuario toca algo.</summary>
+    internal void SelectAndReveal(int offset, int length)
     {
         var doc = TextEditor.Document;
         if (doc is null || offset < 0 || length < 0 || offset + length > doc.TextLength) return;
@@ -366,7 +483,7 @@ public partial class EditorView : UserControl, IFindReplaceTarget
         TextEditor.Select(offset, length);
 
         var location = doc.GetLocation(offset);
-        TextEditor.ScrollTo(location.Line, location.Column);
+        _scrollRestorer.RevealLine(location.Line);
     }
 
     // ─── Clipboard image paste ────────────────────────────────────────────────
@@ -489,61 +606,88 @@ public partial class EditorView : UserControl, IFindReplaceTarget
     }
 
     /// <summary>
-    /// On right-click, resolves the misspelled word under the pointer and, if there is one,
-    /// attaches a fresh <see cref="ContextMenu"/> of replacement suggestions that WPF then
-    /// opens. When the click is not on a misspelling, the menu is cleared so nothing pops up —
-    /// preserving the editor's previous no-context-menu behavior for ordinary text.
+    /// Builds the context menu for a right-click on the editor (design decision #7). Always
+    /// resets <see cref="TextEditor.ContextMenu"/> to <c>null</c> first — no XAML-declared menu
+    /// could survive that unconditional reset, so the menu built here is the only one that ever
+    /// shows, assigned at this method's single exit point. When the click landed on a
+    /// misspelling, its suggestions are PREPENDED (plus a separator); "Copiar enlace a este
+    /// párrafo" (Phase 5, spec "Marker-Writing Boundary") is always appended, spelling or not —
+    /// the old code's early-returns on "no misspelling here" would otherwise have skipped
+    /// building a menu at all, which is exactly what this rewrite fixes.
     /// </summary>
     private void TextEditor_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         // Reset first: a stale menu from a previous right-click must never reappear.
         TextEditor.ContextMenu = null;
 
-        var spell = App.SpellCheckService;
-        if (spell is not { IsAvailable: true } || _spellColorizer is not { Enabled: true })
-            return;
-
         var pos = TextEditor.GetPositionFromPoint(e.GetPosition(TextEditor));
         if (pos is null) return;
 
-        int    offset   = TextEditor.Document.GetOffset(pos.Value.Line, pos.Value.Column);
+        int offset = TextEditor.Document.GetOffset(pos.Value.Line, pos.Value.Column);
+
+        // Caret to the clicked offset FIRST (design decision #7): both the spellcheck
+        // suggestions below (so the user sees what will be corrected) and
+        // "Copiar enlace a este párrafo" (so FindBlockAtPosition resolves the paragraph under
+        // the CLICK, not wherever the caret happened to be before the right-click) depend on it.
+        TextEditor.CaretOffset = offset;
+
         var    line     = TextEditor.Document.GetLineByOffset(offset);
         string lineText = TextEditor.Document.GetText(line);
         int    column   = offset - line.Offset;
 
-        var word = SpellCheckWordResolver.FindMisspelledWordAt(spell, lineText, column);
-        if (word is null) return;
+        // Spellcheck suggestions are now a SKIP, not an early return: the marker-creation item
+        // below must still be appended even when there's no misspelling under the click (or
+        // spellcheck is unavailable/disabled).
+        var spell = App.SpellCheckService;
+        MisspelledWord? word = spell is { IsAvailable: true } && _spellColorizer is { Enabled: true }
+            ? SpellCheckWordResolver.FindMisspelledWordAt(spell, lineText, column)
+            : null;
 
-        // Move the caret onto the word so the user sees what will be corrected.
-        TextEditor.CaretOffset = line.Offset + word.Value.Offset;
-        TextEditor.ContextMenu = BuildSuggestionsMenu(spell, line.Offset + word.Value.Offset, word.Value);
+        var menu = new ContextMenu();
+
+        if (word is { } w)
+        {
+            // The word's OWN offset can differ from the raw click offset by a few characters
+            // within the same line — move the caret onto the word so the user sees what will
+            // be corrected, same as before this rewrite.
+            var wordOffset = line.Offset + w.Offset;
+            TextEditor.CaretOffset = wordOffset;
+
+            foreach (var item in BuildSuggestionItems(spell!, wordOffset, w))
+                menu.Items.Add(item);
+            menu.Items.Add(new Separator());
+        }
+
+        var copyLinkItem = new MenuItem { Header = "Copiar enlace a este párrafo" };
+        copyLinkItem.Click += (_, _) => CopyParagraphLink(offset);
+        menu.Items.Add(copyLinkItem);
+
+        TextEditor.ContextMenu = menu;
     }
 
     /// <summary>
-    /// Builds the suggestions context menu for a misspelled word at
-    /// <paramref name="absoluteOffset"/> in the document. Each item replaces the word in
-    /// place; when the engine offers nothing, a single disabled "no suggestions" item is shown.
+    /// Builds the replacement-suggestion items for a misspelled word at
+    /// <paramref name="absoluteOffset"/> in the document. Each item replaces the word in place;
+    /// when the engine offers nothing, a single disabled "no suggestions" item is yielded so the
+    /// caller still has something to show instead of an empty suggestions section.
     /// </summary>
-    private ContextMenu BuildSuggestionsMenu(
+    private IEnumerable<MenuItem> BuildSuggestionItems(
         ISpellCheckService spell, int absoluteOffset, MisspelledWord word)
     {
-        var menu        = new ContextMenu();
         var suggestions = spell.Suggest(word.Word);
 
         if (suggestions.Count == 0)
         {
-            menu.Items.Add(new MenuItem { Header = "(sin sugerencias)", IsEnabled = false });
-            return menu;
+            yield return new MenuItem { Header = "(sin sugerencias)", IsEnabled = false };
+            yield break;
         }
 
         foreach (var suggestion in suggestions)
         {
             var item = new MenuItem { Header = suggestion, FontWeight = FontWeights.SemiBold };
             item.Click += (_, _) => ReplaceWord(absoluteOffset, word.Length, suggestion);
-            menu.Items.Add(item);
+            yield return item;
         }
-
-        return menu;
     }
 
     /// <summary>Replaces the misspelled span with the chosen suggestion, guarding against a stale offset.</summary>
@@ -553,6 +697,75 @@ public partial class EditorView : UserControl, IFindReplaceTarget
         TextEditor.Document.Replace(offset, length, replacement);
         TextEditor.Focus();
     }
+
+    // ─── Block-marker creation (Phase 5, spec "Marker-Writing Boundary") ─────
+
+    /// <summary>
+    /// "Copiar enlace a este párrafo" (design decision #8): writes a new <c>^id</c> marker ONLY
+    /// into THIS open, focused buffer — this handler only ever touches
+    /// <see cref="TextEditor"/>'s own live document, never a file that isn't open and focused
+    /// here, satisfying the spec's marker-writing boundary by construction. Idempotent: a
+    /// paragraph that already carries a marker has its existing id reused instead of a second
+    /// one being stacked on top.
+    /// </summary>
+    private void CopyParagraphLink(int offset)
+    {
+        if (_vm is null) return;
+
+        var doc = App.MarkdownService.ParsePreviewAst(TextEditor.Text);
+
+        // El offset del clic/caret es del documento VIVO; el AST habla del texto REESCRITO por
+        // el preprocesado de wikilinks. Se traduce a LÍNEA antes de tocar el AST porque la
+        // línea es la única coordenada común a los dos (ver MarkdownService.ParsePreviewAst).
+        var line  = TextEditor.Document.GetLineByOffset(offset).LineNumber - 1;
+        var block = AnchorLocator.FindParagraphAtLine(doc, line);
+        if (block is null)
+        {
+            _vm.StatusSink?.Invoke("No hay ningún párrafo en esa posición para enlazar.");
+            return;
+        }
+
+        var existingId = block.TryGetAttributes()?.Id;
+        string id;
+        if (existingId is not null &&
+            existingId.StartsWith(BlockAnchorExtension.IdPrefix, StringComparison.Ordinal))
+        {
+            id = existingId[BlockAnchorExtension.IdPrefix.Length..];
+        }
+        else
+        {
+            var existingIds = App.MarkdownService.GetBlockMarkers(TextEditor.Text)
+                .Select(m => m.Id).ToList();
+            id = MarkerId.Generate(existingIds);
+
+            // El marcador va al final de la ÚLTIMA línea del párrafo, y esa posición se la
+            // pedimos al documento vivo. Antes se usaba `block.Span.End + 1` — un índice de la
+            // cadena REESCRITA por el preprocesado de wikilinks — y con un `[[...]]` en el
+            // párrafo eso se iba más allá del final del documento:
+            //   ArgumentOutOfRangeException: '0 <= offset <= 45 (Parameter 'offset')'.
+            // En notas más largas ni siquiera tiraba excepción: metía el `^id` en medio de otro
+            // párrafo, en silencio. Ver MarkdownService.ParsePreviewAst para el mecanismo.
+            var lastLine = ParagraphLastLiveLine(doc, block);
+            TextEditor.Document.Insert(
+                TextEditor.Document.GetLineByNumber(lastLine + 1).EndOffset, " ^" + id);
+        }
+
+        var noteName = string.IsNullOrEmpty(_vm.CurrentFilePath)
+            ? "nota"
+            : Path.GetFileNameWithoutExtension(_vm.CurrentFilePath);
+        Clipboard.SetText($"[[{noteName}#^{id}]]");
+        _vm.StatusSink?.Invoke("Enlace al párrafo copiado al portapapeles.");
+    }
+
+    /// <summary>
+    /// Adapta el documento vivo de AvalonEdit a la geometría en líneas de
+    /// <see cref="AnchorLocator.ParagraphLastLine"/> (pura y testeable). Todo el cálculo vive
+    /// allá; acá sólo se leen líneas del buffer real.
+    /// </summary>
+    private int ParagraphLastLiveLine(MarkdownDocument doc, ParagraphBlock block) =>
+        AnchorLocator.ParagraphLastLine(
+            doc, block, TextEditor.Document.LineCount,
+            line => TextEditor.Document.GetText(TextEditor.Document.GetLineByNumber(line + 1)));
 
     // ─── Internal-link click handling ────────────────────────────────────────
 
@@ -578,16 +791,9 @@ public partial class EditorView : UserControl, IFindReplaceTarget
         var lineText = TextEditor.Document.GetText(line);
         var col      = offset - line.Offset;
 
-        // Try wikilink [[target]] first.
-        string? target = FindLinkTargetAtColumn(lineText, col, WikiLinkPattern);
-        if (target is not null)
-        {
-            // Wikilinks without extension → add .md
-            if (!Path.HasExtension(target)) target += ".md";
-        }
-
-        // Then standard [text](target).
-        target ??= FindLinkTargetAtColumn(lineText, col, StdLinkPattern);
+        // Try wikilink [[target]] first, then standard [text](target).
+        string? target = FindLinkTargetAtColumn(lineText, col, WikiLinkPattern)
+            ?? FindLinkTargetAtColumn(lineText, col, StdLinkPattern);
 
         if (target is null || _vm.CurrentFilePath is null or "") return;
 
@@ -596,16 +802,47 @@ public partial class EditorView : UserControl, IFindReplaceTarget
             target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return;
 
+        // LinkTarget is the sole splitter of `|alias` and `#anchor` (design decision #1). The
+        // blind ".md if no extension" append that used to run here — BEFORE ResolveInternalLink
+        // even saw the target — is gone: it independently created the same junk-file defect for
+        // an anchored wikilink (`Nota#Sección` → `Nota#Sección.md`) that FileService's own fix
+        // now closes once, for every caller.
+        var parsedTarget = LinkTarget.Parse(target);
+
+        // Check the extension on the NOTE half only — Path.GetExtension on the raw target would
+        // otherwise treat an anchored image-shaped target's `#anchor` tail as part of the
+        // extension (moot for real images today, but wrong is wrong).
         var imageExts = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg" };
-        if (imageExts.Contains(Path.GetExtension(target), StringComparer.OrdinalIgnoreCase))
+        if (imageExts.Contains(Path.GetExtension(parsedTarget.Note), StringComparer.OrdinalIgnoreCase))
             return;
 
         e.Handled = true;
 
+        // Intra-document anchor (empty note half): the spec requires scrolling THIS buffer,
+        // never opening, navigating, or creating a file.
+        if (parsedTarget.Note.Length == 0)
+        {
+            if (parsedTarget.Kind != AnchorKind.None)
+                JumpToIntraDocumentAnchor(parsedTarget);
+            return;
+        }
+
         try
         {
-            var resolved = App.FileService!.ResolveInternalLink(target, _vm.CurrentFilePath);
-            await _vm.NavigateToLinkAsync(resolved);
+            var resolved = App.FileService!.ResolveInternalLink(parsedTarget.Note, _vm.CurrentFilePath);
+
+            // Anchor half re-encoded exactly as LinkTarget.Parse produced it (sigil kept for a
+            // block anchor) so NavigateToLinkAsync's single `string? anchor` parameter can
+            // round-trip it through LinkTarget.Parse again on the other side (design decision
+            // #1's single source of truth) instead of a second Kind parameter.
+            string? anchorParam = parsedTarget.Kind switch
+            {
+                AnchorKind.Heading => parsedTarget.Anchor,
+                AnchorKind.Block   => "^" + parsedTarget.Anchor,
+                _                  => null,
+            };
+
+            await _vm.NavigateToLinkAsync(resolved, anchorParam);
         }
         catch (Exception ex)
         {

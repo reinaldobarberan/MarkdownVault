@@ -16,8 +16,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Search box -->
-        <Grid Grid.Row="0" Margin="0,0,0,8">
+        <!-- Search box (step 1) -->
+        <Grid x:Name="SearchHeader" Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -40,7 +40,17 @@
                      KeyDown="SearchBox_KeyDown"/>
         </Grid>
 
-        <!-- File list -->
+        <!-- Picked-note header (step 2 — link-anchors change) -->
+        <TextBlock x:Name="AnchorNoteLabel"
+                   Grid.Row="0"
+                   Margin="0,0,0,8"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource Foreground}"
+                   Visibility="Collapsed"/>
+
+        <!-- File list (step 1) -->
         <ListBox x:Name="FileList"
                  Grid.Row="1"
                  FontSize="13"
@@ -64,7 +74,33 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <!-- Format selector -->
+        <!-- Anchor list (step 2 — link-anchors change): whole note, headings, marked
+             paragraphs, or a plain-language hint when there are none yet. -->
+        <ListBox x:Name="AnchorList"
+                 Grid.Row="1"
+                 FontSize="13"
+                 Background="{DynamicResource EditorBackground}"
+                 Foreground="{DynamicResource Foreground}"
+                 BorderBrush="{DynamicResource BorderBrush}"
+                 SelectionMode="Single"
+                 Visibility="Collapsed"
+                 MouseDoubleClick="AnchorList_MouseDoubleClick"
+                 KeyDown="AnchorList_KeyDown">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Label}"
+                               TextWrapping="Wrap"
+                               Margin="2"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Format selector (shared by both steps) -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
             <TextBlock Text="Formato:"
                        VerticalAlignment="Center"
@@ -90,6 +126,14 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,12,0,0">
+            <Button x:Name="BackButton"
+                    Content="Atrás"
+                    Click="Back_Click"
+                    Padding="16,6"
+                    MinWidth="80"
+                    Margin="0,0,8,0"
+                    Cursor="Hand"
+                    Visibility="Collapsed"/>
             <Button Content="Insertar"
                     IsDefault="True"
                     Click="Insert_Click"

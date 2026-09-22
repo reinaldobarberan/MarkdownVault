@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -7,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 using MarkdownVault.Services;
 using MarkdownVault.ViewModels;
@@ -38,6 +40,21 @@ public partial class MainWindow : Window
     private bool           _lastPreviewDark;
     private int            _lastPreviewShellVersion = -1;
     private bool           _previewLoaded;     // last navigation finished → __mvSetBody is available
+
+    /// <summary>
+    /// Pestaña DUEÑA de la página que hoy está en pantalla — no la activa, que en mitad de un
+    /// cambio de pestaña ya es la nueva. Es la clave para saber a quién pertenece el
+    /// <c>window.scrollY</c> que se lee justo antes de navegar afuera.
+    /// </summary>
+    private OpenTab?       _lastPreviewTab;
+
+    /// <summary>
+    /// Ficha de secuencia de <see cref="PushPreview"/>. Leer el scroll de la página actual
+    /// obliga a un <c>await</c> ANTES de navegar, y en ese hueco puede entrar otro push
+    /// (Ctrl+Tab rápido). Sin esta ficha, el push viejo despertaría después y navegaría a un
+    /// HTML que ya no corresponde a la pestaña activa.
+    /// </summary>
+    private int            _previewPushSeq;
 
     public MainWindow()
     {
@@ -344,7 +361,14 @@ public partial class MainWindow : Window
 
             // Track load completion so we only DOM-patch a page that finished loading
             // (its __mvSetBody helper is defined); otherwise fall back to full navigation.
-            PreviewWebView.CoreWebView2.NavigationCompleted += (_, _) => _previewLoaded = true;
+            // Also the anchor-scroll trigger for the FULL-navigation route (design decision #9):
+            // NavigateToString is fire-and-forget, so the pending preview anchor can only be
+            // applied once this event confirms the new page (and its __mvScrollToId) exists.
+            PreviewWebView.CoreWebView2.NavigationCompleted += (_, _) =>
+            {
+                _previewLoaded = true;
+                _ = ApplyPendingPreviewAnchorOrScrollAsync();
+            };
 
             // ── Intercept link clicks ──
             PreviewWebView.CoreWebView2.NavigationStarting += async (_, args) =>
@@ -357,22 +381,55 @@ public partial class MainWindow : Window
                 if (args.Uri.StartsWith("http://vault.local/", StringComparison.OrdinalIgnoreCase))
                 {
                     args.Cancel = true;
+                    // The browser (and WebView2's own URL handling) percent-encodes a raw `^`
+                    // in a fragment before it ever reaches NavigationStarting — unescape BEFORE
+                    // parsing, or a block anchor's `#^a1b2c3` arrives here mangled.
                     var relativePath = Uri.UnescapeDataString(
                         args.Uri["http://vault.local/".Length..]);
 
                     if (_vm?.FocusedGroup.ActiveTab is null || string.IsNullOrEmpty(relativePath))
                         return;
 
-                    // Ignore image/asset links — let them load normally.
-                    var ext = System.IO.Path.GetExtension(relativePath).ToLowerInvariant();
+                    // LinkTarget is the sole splitter of `#anchor` (design decision #1): both
+                    // click routes used to hand the UNSPLIT string straight to
+                    // ResolveInternalLink, which minted a junk file named after the anchor
+                    // (e.g. `Nota#Sección.md`). Parsing here closes that defect for the preview
+                    // route the same way EditorView's click handler closes it for the editor.
+                    var parsedTarget = LinkTarget.Parse(relativePath);
+
+                    // Ignore image/asset links — let them load normally. Checked on the NOTE
+                    // half so an anchored target's `#anchor` tail is never mistaken for part of
+                    // the extension (Path.GetExtension would otherwise include it).
+                    var ext = System.IO.Path.GetExtension(parsedTarget.Note).ToLowerInvariant();
                     var imageExts = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg" };
                     if (imageExts.Contains(ext)) return;
+
+                    // Intra-document anchor (empty note half): the spec requires scrolling THIS
+                    // page, never opening, navigating, or creating a file.
+                    if (parsedTarget.Note.Length == 0)
+                    {
+                        if (parsedTarget.Kind != AnchorKind.None)
+                            await JumpToIntraDocumentPreviewAnchorAsync(parsedTarget);
+                        return;
+                    }
 
                     try
                     {
                         var resolved = App.FileService!.ResolveInternalLink(
-                            relativePath, _vm.FocusedGroup.ActiveTab.FilePath);
-                        await _vm.FocusedGroup.NavigateToLinkAsync(resolved);
+                            parsedTarget.Note, _vm.FocusedGroup.ActiveTab.FilePath);
+
+                        // Anchor half re-encoded exactly as LinkTarget.Parse produced it (sigil
+                        // kept for a block anchor), mirroring EditorView's own click handler —
+                        // NavigateToLinkAsync's single `string? anchor` parameter round-trips it
+                        // through LinkTarget.Parse again on the other side.
+                        string? anchorParam = parsedTarget.Kind switch
+                        {
+                            AnchorKind.Heading => parsedTarget.Anchor,
+                            AnchorKind.Block   => "^" + parsedTarget.Anchor,
+                            _                  => null,
+                        };
+
+                        await _vm.FocusedGroup.NavigateToLinkAsync(resolved, anchorParam);
                     }
                     catch (Exception ex)
                     {
@@ -418,6 +475,8 @@ public partial class MainWindow : Window
     {
         if (!_webViewReady || _vm is null) return;
 
+        var seq = ++_previewPushSeq;
+
         // Re-map virtual host to the FOCUSED/PREVIEWED tab's OWNING root (not the global top
         // root) so relative images resolve against the correct vault once several are open
         // (vault-scoped-resolution spec: "Preview Host Scoped To Focused Tab"). Falls back to
@@ -448,12 +507,22 @@ public partial class MainWindow : Window
         // minimal blank page whose background matches the theme so it clears cleanly.
         if (string.IsNullOrEmpty(html))
         {
+            // Nothing meaningful to scroll to on a blank placeholder — discard rather than let
+            // a stale id leak into whatever page loads next.
+            _vm.DiscardPendingPreviewAnchor();
+
+            // La página que se va todavía está en pantalla: última oportunidad de anotar dónde
+            // estaba leyendo el usuario antes de reemplazarla.
+            await SavePreviewScrollAsync();
+            if (seq != _previewPushSeq) return;
+
             bool darkBlank = _vm.IsDarkTheme;
             var bg = darkBlank ? "#0D1117" : "#FFFFFF";
             _previewLoaded = false;
             PreviewWebView.NavigateToString(
                 $"<!DOCTYPE html><html><body style=\"margin:0;background:{bg};\"></body></html>");
             _lastPreviewPath = null;
+            _lastPreviewTab  = null;
             return;
         }
 
@@ -479,17 +548,177 @@ public partial class MainWindow : Window
             {
                 var js = System.Text.Json.JsonSerializer.Serialize(bodyHtml);
                 await PreviewWebView.CoreWebView2.ExecuteScriptAsync($"window.__mvSetBody({js});");
+                // Patch route (design decision #9): the page already exists, so the pending
+                // anchor can be applied right here instead of waiting for NavigationCompleted,
+                // which won't fire again for an in-place DOM patch.
+                await ApplyPendingPreviewAnchorAsync();
                 return;
             }
             catch { /* fall through to a full navigation */ }
         }
 
         // Full navigation (different file/theme/plugins, first load, or patch failed).
+        // La ruta de parche conserva el scroll sola (la página ni se recarga); esta lo DESTRUYE,
+        // así que acá —y solo acá— hay que leer window.scrollY antes de irse. Se lee contra
+        // _lastPreviewTab, la dueña de la página que todavía está en pantalla: ActiveTab en este
+        // punto ya es la pestaña NUEVA.
+        await SavePreviewScrollAsync();
+        if (seq != _previewPushSeq) return;
+
         _previewLoaded = false;
         PreviewWebView.NavigateToString(html);
         _lastPreviewPath         = currentPath;
+        _lastPreviewTab          = _previewSource?.ActiveTab;
         _lastPreviewDark         = dark;
         _lastPreviewShellVersion = shellVersion;
+        // NavigationCompleted (wired in InitWebViewAsync) applies the pending anchor once this
+        // navigation actually finishes — NavigateToString is fire-and-forget, so it can't be
+        // applied synchronously here.
+    }
+
+    /// <summary>
+    /// Intra-document anchor in the preview (spec "Intra-Document Anchor Navigation"): the page
+    /// already shows the FOCUSED group's current content, so this never navigates — it resolves
+    /// the anchor against that SAME content and asks the already-loaded page to scroll,
+    /// mirroring EditorView's synchronous intra-document jump. Broken/unsupported anchor reports
+    /// via the group's own StatusSink (design decision #11) instead of doing nothing.
+    /// </summary>
+    private async Task JumpToIntraDocumentPreviewAnchorAsync(LinkTarget target)
+    {
+        if (_vm is null || !_webViewReady || !_previewLoaded) return;
+
+        var group = _vm.FocusedGroup;
+        if (group.ActiveTab is null) return;
+
+        var domId = _vm.ResolveAnchorDomId(group.Content, target);
+        if (domId is null)
+        {
+            group.StatusSink?.Invoke(
+                $"No se encontró el ancla «{(target.Kind == AnchorKind.Block ? "^" + target.Anchor : target.Anchor)}» en esta nota.");
+            return;
+        }
+
+        await ScrollPreviewToDomIdAsync(domId);
+    }
+
+    /// <summary>
+    /// Consumes the preview's one-shot pending anchor (design decision #9) and asks the
+    /// already-loaded page to scroll to it. A raw <c>.html</c> preview never gets
+    /// <c>window.__mvScrollToId</c> injected (see apply-progress.md spike 1.3) — harmless here,
+    /// since <see cref="MainViewModel.ResolveAnchorDomId"/> already returns <c>null</c> for
+    /// non-Markdown content (nothing recognizable as a heading/block), so this never even
+    /// attempts the call for that case.
+    /// </summary>
+    private async Task ApplyPendingPreviewAnchorAsync()
+    {
+        if (_vm is null || !_webViewReady) return;
+
+        var domId = _vm.ConsumePendingPreviewAnchor();
+        if (domId is null) return;
+
+        await ScrollPreviewToDomIdAsync(domId);
+    }
+
+    // ─── Memoria de scroll de la vista previa ────────────────────────────────
+
+    /// <summary>
+    /// Ruta de NAVEGACIÓN COMPLETA (<c>NavigationCompleted</c>). EL ANCLA GANA: las dos cosas
+    /// —saltar a un <c>#ancla</c> y volver a donde se estaba leyendo— cuelgan del mismo evento,
+    /// así que si no se ordenan explícitamente pelean y gana cualquiera. Un ancla es un pedido
+    /// EXPLÍCITO del usuario en este mismo instante; la memoria de scroll es un valor por
+    /// defecto. Por eso el ancla se consume primero y la posición guardada solo entra cuando no
+    /// hay ninguna pendiente.
+    ///
+    /// La ruta de parche en sitio (<see cref="PushPreview"/>) NO pasa por acá a propósito: ahí la
+    /// página no se recarga y el scroll se conserva solo, así que reaplicar un valor guardado
+    /// —posiblemente viejo— movería la vista de alguien que solo estaba tipeando.
+    /// </summary>
+    private async Task ApplyPendingPreviewAnchorOrScrollAsync()
+    {
+        if (_vm is null || !_webViewReady) return;
+
+        var domId = _vm.ConsumePendingPreviewAnchor();
+        if (domId is not null)
+        {
+            await ScrollPreviewToDomIdAsync(domId);
+            return;
+        }
+
+        await RestorePreviewScrollAsync();
+    }
+
+    /// <summary>
+    /// Anota <c>window.scrollY</c> de la página que TODAVÍA está en pantalla, en su pestaña
+    /// dueña. Best-effort por definición: si la página ya no responde nos quedamos con lo último
+    /// que supimos, que siempre es mejor que volver a cero.
+    /// </summary>
+    private async Task SavePreviewScrollAsync()
+    {
+        if (_lastPreviewTab is null || !_previewLoaded || !_webViewReady) return;
+
+        try
+        {
+            // ExecuteScriptAsync devuelve JSON, así que el número viene con punto decimal
+            // pase lo que pase con la cultura del SO — de ahí el InvariantCulture.
+            var raw = await PreviewWebView.CoreWebView2.ExecuteScriptAsync("window.scrollY");
+            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var y) && y >= 0)
+                _lastPreviewTab.PreviewScrollY = y;
+        }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>
+    /// Devuelve la vista previa a la posición guardada de la pestaña recién cargada.
+    ///
+    /// El reintento del script NO es paranoia: al terminar la navegación el documento existe
+    /// pero todavía crece —imágenes sin medir, Mermaid que recién va a renderizar— y el
+    /// navegador RECORTA un <c>scrollTo</c> que se pase del alto actual, exactamente el mismo
+    /// modo de fallo que el árbol de alturas de AvalonEdit tiene del lado del editor. Reintenta
+    /// mientras siga quedando CORTO, y se corta en seco apenas detecta que la posición no es la
+    /// que él mismo dejó: eso significa que scrolleó el usuario, y al usuario no se le pelea.
+    /// </summary>
+    private async Task RestorePreviewScrollAsync()
+    {
+        var y = _lastPreviewTab?.PreviewScrollY ?? 0;
+        if (y <= 0) return;
+
+        try
+        {
+            var target = y.ToString("R", CultureInfo.InvariantCulture);
+            await PreviewWebView.CoreWebView2.ExecuteScriptAsync($$"""
+                (function () {
+                  var target = {{target}}, tries = 0, last = -1;
+                  function step() {
+                    if (last >= 0 && Math.abs(window.scrollY - last) > 1) return;
+                    window.scrollTo(0, target);
+                    last = window.scrollY;
+                    if (last < target - 1 && ++tries < 12) requestAnimationFrame(step);
+                  }
+                  step();
+                })();
+                """);
+        }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>
+    /// Task 4.6: reads the boolean <c>window.__mvScrollToId</c> actually returns and reports a
+    /// miss via the navigating group's own StatusSink — a real, if rare, case (design decision
+    /// #4's residual: a plugin that restructures a block at render time can drop the id between
+    /// the AST-level view <see cref="MainViewModel.ResolveAnchorDomId"/> reads and what lands in
+    /// this DOM), distinct from — and reported independently of — the editor's own broken-anchor
+    /// message, since each route resolves its target independently.
+    /// </summary>
+    private async Task ScrollPreviewToDomIdAsync(string domId)
+    {
+        try
+        {
+            var js     = System.Text.Json.JsonSerializer.Serialize(domId);
+            var result = await PreviewWebView.CoreWebView2.ExecuteScriptAsync($"window.__mvScrollToId({js});");
+            if (result != "true")
+                _previewSource?.StatusSink?.Invoke("No se encontró el ancla en la vista previa.");
+        }
+        catch { /* best-effort; nothing to recover from here */ }
     }
 
     private void ApplyPreviewZoom(double zoom)

@@ -1,6 +1,10 @@
 using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Extensions.AutoIdentifiers;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
+using MarkdownVault.Helpers;
 using MarkdownVault.PluginSdk;
 using MarkdownVault.Services.Plugins;
 
@@ -35,6 +39,12 @@ public class MarkdownService
             .UseAdvancedExtensions()
             .UseAutoIdentifiers(AutoIdentifierOptions.GitHub);
 
+        // Host-owned block-marker extension (design decision #3), registered BEFORE the plugin
+        // loop below (Q6) so a `^id` marker is stripped and its id stamped against the ORIGINAL
+        // paragraph structure — before a plugin extension (e.g. Callouts) gets a chance to
+        // restructure it. Stateless; safe to add fresh on every rebuild.
+        builder.Extensions.Add(new BlockAnchorExtension());
+
         foreach (var contribution in _registry.MarkdownContributions)
         {
             if (contribution.CreateMarkdigExtension() is IMarkdownExtension ext)
@@ -66,6 +76,89 @@ public class MarkdownService
         return Markdig.Markdown.ToHtml(processed, GetPipeline());
     }
 
+    // ─── Anchor lookups (pure — link-anchors change) ─────────────────────────
+
+    /// <summary>
+    /// Parses <paramref name="markdown"/> against THIS service's own pipeline — same
+    /// extensions the preview renders with (auto-identifiers, plugin contributions, our own
+    /// <see cref="BlockAnchorExtension"/>) — so heading/block ids never drift from what the
+    /// preview actually shows (design decision #6: "zero drift, composes with plugin
+    /// extensions for free"). Pure: no HTML rendering, no WPF, no file I/O.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ EL AST QUE DEVUELVE NO ES EL DEL TEXTO QUE EL USUARIO TIENE EN PANTALLA.
+    ///
+    /// MECANISMO (esto es lo que hay que entender, no una regla que memorizar): lo que se
+    /// parsea es <see cref="PreprocessWikiLinks"/>(markdown), es decir una COPIA REESCRITA.
+    /// Un <c>[[audio parte 001#^8jlekw]]</c> (27 caracteres) se expande a
+    /// <c>[audio parte 001](&lt;audio parte 001.md#^8jlekw&gt;)</c> (muchos más). A partir de
+    /// ese punto, TODO <c>SourceSpan</c> del AST está corrido: son índices dentro de la cadena
+    /// reescrita, NO dentro del documento vivo de AvalonEdit. Usar <c>block.Span.Start/End</c>
+    /// contra <c>TextEditor.Document</c> tira <c>ArgumentOutOfRangeException</c> cuando el
+    /// corrimiento se pasa del final — y, PEOR, acierta en silencio en el lugar equivocado
+    /// cuando la nota es lo bastante larga como para no tirar la excepción.
+    ///
+    /// QUÉ SÍ SOBREVIVE: los ids (por eso el nombre "preview ast": los ids son exactamente los
+    /// que el preview renderiza, decisión #6) y las LÍNEAS. <see cref="PreprocessWikiLinks"/>
+    /// sustituye siempre DENTRO de una línea — los regex de wikilink excluyen <c>\r\n</c> a
+    /// propósito y los code spans se copian literales — así que nunca agrega ni saca saltos de
+    /// línea. Por eso <c>block.Line</c> es válido contra el documento vivo y <c>block.Span</c>
+    /// no lo es.
+    ///
+    /// REGLA DERIVADA: la unidad de intercambio entre este AST y el documento vivo es la
+    /// LÍNEA. Para convertirla a offset, pedíselo al documento vivo:
+    /// <c>TextEditor.Document.GetLineByNumber(line + 1).Offset</c> (Markdig cuenta líneas desde
+    /// 0, AvalonEdit desde 1). Ver <see cref="Helpers.AnchorLocator"/>.
+    /// </remarks>
+    public MarkdownDocument ParsePreviewAst(string markdown) =>
+        Markdig.Markdown.Parse(PreprocessWikiLinks(markdown), GetPipeline());
+
+    /// <summary>
+    /// Every heading's resolved anchor id, plain text (the heading-text fallback,
+    /// decision #6), and source line — for anchor resolution (<see cref="AnchorLocator"/>) and,
+    /// later, the link picker's heading list.
+    /// </summary>
+    public IReadOnlyList<(string Id, string Text, int Line)> GetHeadings(string markdown)
+    {
+        var doc = ParsePreviewAst(markdown);
+        var headings = new List<(string, string, int)>();
+        foreach (var heading in doc.Descendants<HeadingBlock>())
+        {
+            var id   = heading.TryGetAttributes()?.Id ?? string.Empty;
+            var text = PlainText(heading.Inline);
+            headings.Add((id, text, heading.Line));
+        }
+        return headings;
+    }
+
+    /// <summary>
+    /// Every recognized block marker — namespaced id stripped back to its bare form
+    /// (<c>"mv-b-a1b2c3"</c> → <c>"a1b2c3"</c>) — and its source line. Used by
+    /// <see cref="AnchorLocator"/> and, later, the link picker's "already-marked paragraphs"
+    /// list and the "Copiar enlace a este párrafo" collision check.
+    /// </summary>
+    public IReadOnlyList<(string Id, int Line)> GetBlockMarkers(string markdown)
+    {
+        var doc = ParsePreviewAst(markdown);
+        var markers = new List<(string, int)>();
+        foreach (var paragraph in doc.Descendants<ParagraphBlock>())
+        {
+            var id = paragraph.TryGetAttributes()?.Id;
+            if (id is not null && id.StartsWith(BlockAnchorExtension.IdPrefix, StringComparison.Ordinal))
+                markers.Add((id[BlockAnchorExtension.IdPrefix.Length..], paragraph.Line));
+        }
+        return markers;
+    }
+
+    private static string PlainText(ContainerInline? inline)
+    {
+        if (inline is null) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        foreach (var literal in inline.Descendants<LiteralInline>())
+            sb.Append(literal.Content.ToString());
+        return sb.ToString();
+    }
+
     // ─── Wikilink preprocessing ──────────────────────────────────────────────
 
     // Fenced (```...```) and inline (`...`) code spans. Wikilink rewriting must skip
@@ -74,9 +167,19 @@ public class MarkdownService
     private static readonly Regex CodeSpanRegex = new(
         @"```[\s\S]*?```|`[^`]*`", RegexOptions.Compiled);
 
-    // [[target]] or [[target|display]]
+    // [[target]] or [[target|display]].
+    //
+    // Los `\r\n` excluidos NO son cosmética: son el contrato que sostiene todo
+    // ParsePreviewAst. Una clase negada como [^\]|] también matchea saltos de línea, así que
+    // un `[[audio\nparte]]` se colapsaba a UNA línea al reescribirse (el .Trim() del display
+    // se come el salto) y el AST quedaba corrido EN LÍNEAS, no sólo en offsets — es decir,
+    // se rompía la única coordenada que el resto del código puede usar contra el documento
+    // vivo. Acotando el match a una sola línea, "el preprocesado no agrega ni saca saltos de
+    // línea" pasa de ser una observación a ser una propiedad estructural.
+    // Efecto secundario deseado: un `[[...]]` partido en dos líneas ya no se convierte en
+    // enlace, que es exactamente lo que hace Obsidian.
     private static readonly Regex WikiLinkRegex = new(
-        @"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", RegexOptions.Compiled);
+        @"\[\[([^\]|\r\n]+)(?:\|([^\]\r\n]+))?\]\]", RegexOptions.Compiled);
 
     /// <summary>
     /// Converts <c>[[target]]</c> wikilinks into standard Markdown links
@@ -103,23 +206,62 @@ public class MarkdownService
         return sb.ToString();
     }
 
+    /// <remarks>
+    /// The target is split via <see cref="LinkTarget"/> — the SAME parser every other call
+    /// site uses — before the href is built. Previously this blindly appended <c>.md</c> to
+    /// the whole raw target, so <c>[[#Conclusiones]]</c> (an intra-document anchor) rendered
+    /// as <c>href="#Conclusiones.md"</c>: wrong AND not routed as an in-page scroll at all
+    /// (link-anchors change, "Defect 1"). Splitting first means an empty note half now
+    /// produces a bare <c>#anchor</c> href, and a heading/block anchor on another note keeps
+    /// its <c>#anchor</c> suffix instead of being swallowed into the filename.
+    /// </remarks>
     private static string ConvertWikiLinks(string text) =>
         WikiLinkRegex.Replace(text, match =>
         {
-            var target  = match.Groups[1].Value.Trim();
-            // Default display is the note name (not the full path) for clean link text.
+            var target = match.Groups[1].Value.Trim();
+            var parsed = LinkTarget.Parse(target);
+
+            // Default display is the note name (not the full path) for clean link text; for an
+            // intra-document anchor there is no note, so fall back to the anchor text itself.
             var display = match.Groups[2].Success
                 ? match.Groups[2].Value.Trim()
-                : System.IO.Path.GetFileNameWithoutExtension(target);
+                : parsed.Note.Length > 0
+                    ? System.IO.Path.GetFileNameWithoutExtension(parsed.Note)
+                    : parsed.Anchor ?? target;
 
-            // Add .md if the target has no extension
-            var href = System.IO.Path.HasExtension(target) ? target : target + ".md";
+            var href = BuildWikiLinkHref(parsed);
             // CommonMark: link destinations that contain spaces or parentheses must
             // be wrapped in angle brackets, otherwise the link isn't recognized.
             if (href.IndexOfAny([' ', '(', ')']) >= 0)
                 href = $"<{href}>";
             return $"[{display}]({href})";
         });
+
+    /// <summary>
+    /// Rebuilds an href from an already-split <see cref="LinkTarget"/>: <c>.md</c> is appended
+    /// only to a non-empty note half that has no extension, and the anchor (if any) is
+    /// reattached as a <c>#fragment</c> — never baked into the note half itself, which is what
+    /// let the junk-file defect happen upstream in <c>FileService.ResolveInternalLink</c>. A
+    /// bare <c>^id</c> becomes <c>#^id</c> in the href; WebView2/the browser will
+    /// percent-encode the <c>^</c> on navigation, and the click handler
+    /// (<c>MainWindow.xaml.cs</c>) already runs it back through
+    /// <see cref="Uri.UnescapeDataString(string)"/> before re-parsing (design decision #2).
+    /// </summary>
+    private static string BuildWikiLinkHref(LinkTarget parsed)
+    {
+        var notePart = parsed.Note;
+        if (notePart.Length > 0 && !System.IO.Path.HasExtension(notePart))
+            notePart += ".md";
+
+        var anchorPart = parsed.Kind switch
+        {
+            AnchorKind.Heading => parsed.Anchor,
+            AnchorKind.Block   => "^" + parsed.Anchor,
+            _                  => null,
+        };
+
+        return anchorPart is null ? notePart : $"{notePart}#{anchorPart}";
+    }
 
     private string WrapInPage(string bodyHtml, bool isDarkTheme, string? vaultRoot)
     {
@@ -163,6 +305,18 @@ public class MarkdownService
                     if (!el) return;
                     el.innerHTML = html;
                     document.dispatchEvent(new Event('DOMContentLoaded'));
+                };
+
+                // Anchor navigation (design decision #10): scrolls to an already-rendered
+                // heading/block id. Returns false when the id is absent so the host can report
+                // the miss via StatusSink instead of silently doing nothing — a plugin that
+                // restructures a block (e.g. Callouts) can drop the id between GetHeadings/
+                // GetBlockMarkers' AST-level view and what actually lands in this DOM.
+                window.__mvScrollToId = function(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return false;
+                    el.scrollIntoView({ block: 'start' });
+                    return true;
                 };
 
                 document.addEventListener("DOMContentLoaded", function() {

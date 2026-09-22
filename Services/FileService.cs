@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using MarkdownVault.Helpers;
 using MarkdownVault.Models;
 
 namespace MarkdownVault.Services;
@@ -298,6 +299,15 @@ public class FileService : IDisposable
     public Task<string> ReadFileAsync(string path) =>
         File.ReadAllTextAsync(path, System.Text.Encoding.UTF8);
 
+    /// <summary>
+    /// Synchronous sibling of <see cref="ReadFileAsync"/> (link-anchors change, Phase 6): the
+    /// link picker's anchor step populates a synchronous WPF dialog while the user waits — same
+    /// "nothing to await this from" situation as <see cref="WriteFile"/>, just for a read
+    /// instead of a write, so it needs none of that method's self-write guarding.
+    /// </summary>
+    public string ReadFile(string path) =>
+        File.ReadAllText(path, System.Text.Encoding.UTF8);
+
     /// <summary>Writes UTF-8 text to a file asynchronously, creating it if necessary.</summary>
     public async Task WriteFileAsync(string path, string content)
     {
@@ -453,11 +463,27 @@ public class FileService : IDisposable
     /// <paramref name="root"/>. A <c>null</c> root means no scope constraint (legacy behavior
     /// for a file outside every open vault).
     /// </summary>
+    /// <remarks>
+    /// Defense in depth (design decision #12): <paramref name="target"/> is run back through
+    /// <see cref="LinkTarget.Parse(string)"/> here too, even though every known caller already
+    /// splits before calling this method. If a call site is ever missed, the anchor half is
+    /// still discarded before it can reach file resolution — the worst case degrades to "anchor
+    /// ignored", never a junk file named after the anchor (e.g. the historical
+    /// <c>Nota#Sección.md</c> defect this change closes). An empty note half (a bare
+    /// intra-document anchor, e.g. <c>"#Conclusiones"</c>) has nothing to resolve and MUST NOT
+    /// reach step 3's create-if-missing — callers are responsible for never sending one here
+    /// (see the editor/preview click handlers), so this throws rather than minting a bogus file.
+    /// </remarks>
     public string ResolveInternalLink(string? root, string target, string currentFilePath)
     {
         var currentDir = Path.GetDirectoryName(currentFilePath)!;
 
-        var normalized = target.Replace('\\', '/').Trim();
+        var notePart = LinkTarget.Parse(target).Note;
+        if (notePart.Length == 0)
+            throw new InvalidOperationException(
+                "El enlace no tiene una nota de destino (es un ancla intradocumento).");
+
+        var normalized = notePart.Replace('\\', '/').Trim();
         if (!SupportedExtensions.Note.Contains(Path.GetExtension(normalized)))
             normalized += ".md";
 
@@ -485,7 +511,8 @@ public class FileService : IDisposable
     /// <summary>
     /// Legacy entry point, preserved for callers not yet migrated to the root-aware overload
     /// (Phase 7): resolves <paramref name="currentFilePath"/>'s owning root itself, falling
-    /// back to the top open root.
+    /// back to the top open root. Delegates entirely to the root-aware overload, so it inherits
+    /// the same anchor-splitting defense in depth for free.
     /// </summary>
     public string ResolveInternalLink(string target, string currentFilePath)
     {
